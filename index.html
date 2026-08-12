@@ -1,0 +1,2788 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebIDE - Multi-Language Browser IDE</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap">
+  <!-- JSZip for ZIP support -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <!-- Babel standalone for JSX/TSX/TS transpiling -->
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.5/babel.min.js"></script>
+  <!-- Monaco Editor -->
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
+  <!-- Pyodide -->
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+  <!-- Marked for Markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+  <style>
+    :root {
+      --bg-primary: #1e1e1e;
+      --bg-secondary: #252526;
+      --bg-tertiary: #2d2d30;
+      --bg-sidebar: #252526;
+      --bg-tab: #2d2d30;
+      --bg-tab-active: #1e1e1e;
+      --bg-tab-hover: #2a2d2e;
+      --bg-panel: #1e1e1e;
+      --bg-statusbar: #007acc;
+      --bg-titlebar: #323233;
+      --bg-activitybar: #333333;
+      --bg-input: #3c3c3c;
+      --bg-dropdown: #252526;
+      --bg-hover: #2a2d2e;
+      --bg-selected: #094771;
+      --bg-button: #0e639c;
+      --bg-tooltip: #252526;
+      --text-primary: #cccccc;
+      --text-secondary: #969696;
+      --text-muted: #6a6a6a;
+      --text-link: #4dc9f0;
+      --text-active: #ffffff;
+      --text-tab: #969696;
+      --text-tab-active: #cccccc;
+      --border-color: #3e3e42;
+      --border-focus: #007acc;
+      --accent-blue: #007acc;
+      --accent-green: #4ec9b0;
+      --accent-yellow: #dcdcaa;
+      --accent-red: #f44747;
+      --accent-orange: #ce9178;
+      --accent-purple: #c586c0;
+      --sidebar-width: 240px;
+      --activitybar-width: 48px;
+      --panel-height: 240px;
+      --tab-height: 35px;
+      --statusbar-height: 22px;
+      --titlebar-height: 38px;
+      --font-code: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+      --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; background: var(--bg-primary); color: var(--text-primary); }
+    body { font-family: var(--font-ui); font-size: 12px; display: flex; flex-direction: column; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #424242; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+    /* ===== Title Bar ===== */
+    #titlebar {
+      height: var(--titlebar-height); background: var(--bg-titlebar);
+      display: flex; align-items: center; padding: 0 12px;
+      border-bottom: 1px solid #111; flex-shrink: 0;
+      user-select: none; position: relative; z-index: 200;
+    }
+    #titlebar .title-icon { font-size: 20px; color: #4fc1ff; margin-right: 10px; }
+    #titlebar .title-name { font-size: 14px; font-weight: 600; color: white; letter-spacing: 0.5px; }
+    #titlebar .title-sub { font-size: 11px; color: var(--text-secondary); margin-left: 8px; }
+    #titlebar .spacer { flex: 1; }
+    #titlebar .hdr-btn {
+      padding: 4px 12px; border: none; border-radius: 4px; cursor: pointer;
+      font-size: 12px; display: flex; align-items: center; gap: 6px;
+      transition: opacity 0.15s;
+    }
+    #titlebar .hdr-btn:hover { opacity: 0.85; }
+    #titlebar .run-hdr { background: #0d7a3e; color: white; }
+    #titlebar .stop-hdr { background: #8c2a2a; color: white; display: none; }
+
+    /* ===== Menu Bar ===== */
+    #menubar {
+      height: 30px; background: var(--bg-titlebar);
+      display: flex; align-items: center; padding: 0 4px;
+      border-bottom: 1px solid #111; flex-shrink: 0; z-index: 200;
+      position: relative;
+    }
+    .menu-item {
+      padding: 4px 10px; font-size: 12px; color: var(--text-primary);
+      cursor: pointer; border-radius: 3px; position: relative;
+      transition: background 0.1s; user-select: none;
+    }
+    .menu-item:hover, .menu-item.open { background: rgba(255,255,255,0.1); }
+    .menu-dropdown {
+      display: none; position: absolute; top: 100%; left: 0;
+      background: var(--bg-dropdown); border: 1px solid var(--border-color);
+      min-width: 200px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      z-index: 1000; border-radius: 4px; padding: 4px 0;
+    }
+    .menu-item.open .menu-dropdown { display: block; }
+    .menu-dd-item {
+      padding: 6px 16px; font-size: 12px; color: var(--text-primary);
+      cursor: pointer; display: flex; justify-content: space-between; gap: 24px;
+      transition: background 0.1s;
+    }
+    .menu-dd-item:hover { background: var(--bg-selected); }
+    .menu-sep { border-top: 1px solid var(--border-color); margin: 3px 0; }
+    .menu-dd-item .kbd { color: var(--text-secondary); font-size: 11px; }
+
+    /* ===== Main Layout ===== */
+    #main-layout { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+
+    /* ===== Activity Bar ===== */
+    #activitybar {
+      width: var(--activitybar-width); background: var(--bg-activitybar);
+      display: flex; flex-direction: column; align-items: center;
+      padding: 4px 0; flex-shrink: 0;
+      border-right: 1px solid rgba(0,0,0,0.3); z-index: 100;
+    }
+    .act-btn {
+      width: 40px; height: 40px; border: none; background: transparent;
+      color: var(--text-secondary); cursor: pointer; border-radius: 6px;
+      display: flex; align-items: center; justify-content: center; font-size: 16px;
+      transition: color 0.15s, background 0.15s; position: relative; margin: 2px 0;
+    }
+    .act-btn:hover { color: var(--text-active); background: rgba(255,255,255,0.07); }
+    .act-btn.active { color: var(--text-active); background: rgba(255,255,255,0.08); }
+    .act-btn.active::before {
+      content: ''; position: absolute; left: -1px; top: 8px; bottom: 8px;
+      width: 2px; background: var(--accent-blue); border-radius: 0 2px 2px 0;
+    }
+    #activitybar .act-spacer { flex: 1; }
+
+    /* ===== Sidebar ===== */
+    #sidebar {
+      width: var(--sidebar-width); background: var(--bg-sidebar);
+      display: flex; flex-direction: column;
+      border-right: 1px solid var(--border-color);
+      flex-shrink: 0; overflow: hidden; transition: width 0.15s;
+    }
+    #sidebar.collapsed { width: 0; border-right-width: 0; }
+    .sb-title {
+      padding: 8px 16px 6px; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary);
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: default; user-select: none; flex-shrink: 0;
+    }
+    .sb-actions { display: flex; gap: 4px; }
+    .sb-actions button {
+      background: transparent; border: none; color: var(--text-secondary);
+      cursor: pointer; width: 20px; height: 20px; border-radius: 3px;
+      display: flex; align-items: center; justify-content: center; font-size: 12px;
+      transition: color 0.1s, background 0.1s;
+    }
+    .sb-actions button:hover { color: var(--text-active); background: rgba(255,255,255,0.1); }
+
+    /* ===== File Tree ===== */
+    #file-tree { flex: 1; overflow-y: auto; padding: 2px 0; }
+    .ft-folder {
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 8px 3px 8px; cursor: pointer; font-size: 13px;
+      color: var(--text-primary); transition: background 0.1s;
+      position: relative; white-space: nowrap; user-select: none;
+    }
+    .ft-folder:hover { background: var(--bg-hover); }
+    .ft-folder .ft-icon { font-size: 14px; width: 16px; text-align: center; flex-shrink: 0; color: #e8b347; }
+    .ft-folder .ft-arrow { font-size: 10px; color: var(--text-secondary); width: 12px; flex-shrink: 0; transition: transform 0.15s; }
+    .ft-folder.open .ft-arrow { transform: rotate(90deg); }
+    .ft-folder .ft-name { flex: 1; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+    .ft-folder .ft-acts { display: none; gap: 2px; position: absolute; right: 4px; }
+    .ft-folder:hover .ft-acts { display: flex; }
+    .ft-folder .ft-acts button {
+      background: transparent; border: none; color: var(--text-secondary);
+      cursor: pointer; width: 18px; height: 18px; border-radius: 2px;
+      display: flex; align-items: center; justify-content: center; font-size: 11px;
+    }
+    .ft-folder .ft-acts button:hover { color: var(--text-active); background: rgba(255,255,255,0.1); }
+    .ft-item {
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 8px 3px 16px; cursor: pointer; font-size: 13px;
+      color: var(--text-primary); transition: background 0.1s;
+      position: relative; white-space: nowrap; user-select: none;
+    }
+    .ft-item:hover { background: var(--bg-hover); }
+    .ft-item.active { background: var(--bg-selected); }
+    .ft-item .ft-icon { font-size: 13px; width: 16px; text-align: center; flex-shrink: 0; }
+    .ft-item .ft-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+    .ft-item .ft-acts { display: none; gap: 2px; position: absolute; right: 4px; }
+    .ft-item:hover .ft-acts { display: flex; }
+    .ft-item .ft-acts button {
+      background: transparent; border: none; color: var(--text-secondary);
+      cursor: pointer; width: 18px; height: 18px; border-radius: 2px;
+      display: flex; align-items: center; justify-content: center; font-size: 11px;
+    }
+    .ft-item .ft-acts button:hover { color: var(--text-active); background: rgba(255,255,255,0.1); }
+    .ft-item.unsaved .ft-name::after {
+      content: '\25CF'; font-size: 8px; margin-left: 4px; color: white; vertical-align: middle;
+    }
+
+    /* ===== Search Panel ===== */
+    #search-panel { display: none; flex-direction: column; overflow: hidden; flex: 1; }
+    #search-panel.vis { display: flex; }
+    .si-wrap { padding: 8px; }
+    .si-wrap input {
+      width: 100%; padding: 5px 8px; background: var(--bg-input);
+      border: 1px solid var(--border-color); color: var(--text-primary);
+      font-size: 13px; border-radius: 3px; outline: none;
+    }
+    .si-wrap input:focus { border-color: var(--border-focus); }
+    #search-results { overflow-y: auto; padding: 0 4px; max-height: 400px; }
+    .sr-item { padding: 4px 8px; cursor: pointer; font-size: 12px; border-radius: 3px; }
+    .sr-item:hover { background: var(--bg-hover); }
+    .sr-item .sr-file { color: var(--text-secondary); font-size: 11px; }
+    .sr-item .sr-line { color: var(--text-primary); font-family: var(--font-code); }
+
+    /* ===== Editor Area ===== */
+    #editor-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+    /* ===== Tab Bar ===== */
+    #tab-bar {
+      height: var(--tab-height); background: var(--bg-tab);
+      display: flex; align-items: stretch; overflow-x: auto;
+      flex-shrink: 0; border-bottom: 1px solid var(--border-color);
+    }
+    #tab-bar::-webkit-scrollbar { height: 3px; }
+    .tab {
+      display: flex; align-items: center; gap: 6px;
+      padding: 0 12px; min-width: 120px; max-width: 200px;
+      background: var(--bg-tab); color: var(--text-tab);
+      cursor: pointer; font-size: 12px;
+      border-right: 1px solid var(--border-color);
+      transition: background 0.1s; position: relative; flex-shrink: 0;
+      user-select: none;
+    }
+    .tab:hover { background: var(--bg-tab-hover); color: var(--text-tab-active); }
+    .tab.active {
+      background: var(--bg-tab-active); color: var(--text-tab-active);
+      border-top: 1px solid var(--accent-blue);
+    }
+    .tab .t-icon { font-size: 12px; flex-shrink: 0; }
+    .tab .t-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tab.unsaved .t-name::after { content: '\25CF'; font-size: 8px; margin-left: 4px; vertical-align: middle; }
+    .tab .t-close {
+      width: 18px; height: 18px; border: none; background: transparent;
+      color: transparent; cursor: pointer; border-radius: 3px;
+      display: flex; align-items: center; justify-content: center; font-size: 11px;
+      flex-shrink: 0;
+    }
+    .tab:hover .t-close, .tab.active .t-close { color: var(--text-secondary); }
+    .tab .t-close:hover { color: var(--text-active) !important; background: rgba(255,255,255,0.1); }
+    .tab-new {
+      width: 35px; flex-shrink: 0; background: transparent; border: none;
+      color: var(--text-secondary); cursor: pointer; font-size: 18px;
+      display: flex; align-items: center; justify-content: center;
+      transition: color 0.1s, background 0.1s;
+    }
+    .tab-new:hover { color: var(--text-active); background: rgba(255,255,255,0.07); }
+
+    /* ===== Breadcrumb ===== */
+    #breadcrumb {
+      height: 24px; padding: 0 12px; background: var(--bg-primary);
+      display: flex; align-items: center; gap: 6px;
+      border-bottom: 1px solid var(--border-color);
+      flex-shrink: 0; font-size: 12px; color: var(--text-secondary);
+    }
+
+    /* ===== Editor Container ===== */
+    #editor-container { flex: 1; overflow: hidden; position: relative; min-height: 0; }
+    #monaco-editor { width: 100%; height: 100%; }
+
+    /* ===== Welcome ===== */
+    #welcome {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; background: var(--bg-primary); z-index: 10;
+    }
+    #welcome.hidden { display: none; }
+    .wlc-logo { font-size: 64px; color: #4fc1ff; margin-bottom: 16px; }
+    .wlc-title { font-size: 30px; font-weight: 700; color: white; margin-bottom: 4px; }
+    .wlc-sub { font-size: 14px; color: var(--text-secondary); margin-bottom: 32px; }
+    .wlc-btns { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-bottom: 24px; }
+    .wlc-btn {
+      padding: 10px 20px; border-radius: 4px; font-size: 13px;
+      cursor: pointer; border: none; display: flex; align-items: center; gap: 8px;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .wlc-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+    .wlc-btn.primary { background: var(--accent-blue); color: white; }
+    .wlc-btn.secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); }
+    .wlc-recent h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); margin-bottom: 8px; text-align: center; }
+    .wlc-r-item { padding: 5px 12px; cursor: pointer; font-size: 13px; color: var(--text-link); border-radius: 3px; }
+    .wlc-r-item:hover { background: rgba(255,255,255,0.05); }
+
+    /* ===== Panel ===== */
+    #panel {
+      height: var(--panel-height); background: var(--bg-panel);
+      border-top: 1px solid var(--border-color);
+      display: flex; flex-direction: column; flex-shrink: 0;
+    }
+    #panel-resize { height: 4px; cursor: ns-resize; background: transparent; flex-shrink: 0; }
+    #panel-resize:hover { background: var(--accent-blue); opacity: 0.4; }
+
+    /* ===== Panel Tab Bar ===== */
+    #ptabbar {
+      height: 30px; background: var(--bg-tab);
+      display: flex; align-items: center; padding: 0 8px;
+      border-bottom: 1px solid var(--border-color); gap: 4px; flex-shrink: 0;
+    }
+    .ptab {
+      padding: 0 10px; height: 100%; display: flex; align-items: center;
+      font-size: 12px; color: var(--text-secondary); cursor: pointer;
+      border-bottom: 2px solid transparent; gap: 5px;
+      transition: color 0.1s, border-color 0.1s;
+    }
+    .ptab:hover { color: var(--text-primary); }
+    .ptab.active { color: var(--text-primary); border-bottom-color: var(--accent-blue); }
+    #ptabbar .psp { flex: 1; }
+    .pact-btn {
+      width: 24px; height: 24px; background: transparent; border: none;
+      color: var(--text-secondary); cursor: pointer; border-radius: 3px;
+      display: flex; align-items: center; justify-content: center; font-size: 11px;
+    }
+    .pact-btn:hover { color: var(--text-active); background: rgba(255,255,255,0.1); }
+
+    /* ===== Terminal ===== */
+    #term-wrap { flex: 1; display: none; flex-direction: column; min-height: 0; }
+    #term-wrap.active { display: flex; }
+    #term-out {
+      flex: 1; overflow-y: auto; padding: 8px 12px;
+      font-family: var(--font-code); font-size: 13px; line-height: 1.5;
+    }
+    .tl { margin-bottom: 1px; white-space: pre-wrap; word-break: break-word; }
+    .tl-in { color: #4fc1ff; }
+    .tl-out { color: var(--text-primary); }
+    .tl-err { color: #f48771; }
+    .tl-warn { color: #cca700; }
+    .tl-ok { color: #4ec9b0; }
+    .tl-sys { color: var(--text-secondary); font-style: italic; }
+    #term-input-row {
+      display: flex; align-items: center; padding: 4px 12px;
+      border-top: 1px solid var(--border-color); gap: 8px; flex-shrink: 0;
+    }
+    .term-prompt { color: #4fc1ff; font-family: var(--font-code); font-size: 13px; }
+    #term-in {
+      flex: 1; background: transparent; border: none; outline: none;
+      color: var(--text-primary); font-family: var(--font-code); font-size: 13px;
+      caret-color: #4fc1ff;
+    }
+    .run-btn {
+      padding: 4px 14px; background: #0d7a3e; border: none; color: white;
+      border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;
+      display: flex; align-items: center; gap: 6px;
+      transition: background 0.1s, transform 0.1s;
+    }
+    .run-btn:hover { background: #0f9549; }
+    .run-btn:active { transform: scale(0.97); }
+    .run-btn.stopping { background: #a52e2e; }
+
+    /* ===== Output / Problems ===== */
+    #out-wrap { flex: 1; display: none; flex-direction: column; min-height: 0; overflow-y: auto; }
+    #out-wrap.active { display: flex; }
+    #prob-wrap { flex: 1; display: none; flex-direction: column; min-height: 0; overflow-y: auto; }
+    #prob-wrap.active { display: flex; }
+    .prob-item {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 5px 12px; cursor: pointer; font-size: 12px;
+      border-left: 3px solid transparent; transition: background 0.1s;
+    }
+    .prob-item:hover { background: var(--bg-hover); }
+    .prob-item.err { border-left-color: var(--accent-red); }
+    .prob-item.warn { border-left-color: var(--accent-yellow); }
+    .prob-item.info { border-left-color: var(--accent-blue); }
+    .prob-item .pi { font-size: 13px; flex-shrink: 0; margin-top: 1px; }
+    .prob-item.err .pi { color: var(--accent-red); }
+    .prob-item.warn .pi { color: var(--accent-yellow); }
+    .prob-item.info .pi { color: var(--accent-blue); }
+    .prob-msg { color: var(--text-primary); }
+    .prob-loc { color: var(--text-secondary); font-size: 11px; }
+
+    /* ===== Preview wrap ===== */
+    #preview-wrap { flex: 1; display: none; flex-direction: column; min-height: 0; }
+    #preview-wrap.active { display: flex; }
+    #preview-toolbar {
+      display: flex; align-items: center; padding: 4px 8px; gap: 8px;
+      border-bottom: 1px solid var(--border-color); flex-shrink: 0;
+      background: var(--bg-secondary);
+    }
+    #preview-toolbar button {
+      padding: 3px 10px; border: none; border-radius: 3px; cursor: pointer;
+      font-size: 11px; background: var(--bg-tertiary); color: var(--text-primary);
+    }
+    #preview-toolbar button:hover { background: var(--bg-selected); }
+    #preview-frame {
+      flex: 1; border: none; background: white;
+    }
+
+    /* ===== Status Bar ===== */
+    #statusbar {
+      height: var(--statusbar-height); background: var(--bg-statusbar);
+      display: flex; align-items: center; padding: 0 8px;
+      flex-shrink: 0; font-size: 12px; color: rgba(255,255,255,0.9);
+      z-index: 100; gap: 2px;
+    }
+    .si {
+      display: flex; align-items: center; gap: 5px;
+      padding: 0 8px; height: 100%; cursor: pointer;
+      transition: background 0.1s; border-radius: 3px; white-space: nowrap;
+    }
+    .si:hover { background: rgba(255,255,255,0.15); }
+    .si .ic { font-size: 11px; }
+    #statusbar .ssp { flex: 1; }
+    #py-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ec9b0; }
+    #py-dot.loading { background: #cca700; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
+
+    /* ===== Context Menu ===== */
+    .ctx-menu {
+      position: fixed; z-index: 9999; background: var(--bg-dropdown);
+      border: 1px solid var(--border-color); border-radius: 5px; padding: 4px 0;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4); min-width: 200px; display: none;
+    }
+    .ctx-menu.vis { display: block; }
+    .ci {
+      padding: 6px 14px; font-size: 12px; cursor: pointer;
+      color: var(--text-primary); display: flex; justify-content: space-between; gap: 20px;
+    }
+    .ci:hover { background: var(--bg-selected); }
+    .ci.danger:hover { background: rgba(244,71,71,0.2); color: #f48771; }
+    .cs { border-top: 1px solid var(--border-color); margin: 3px 0; }
+    .ci .ks { color: var(--text-secondary); font-size: 11px; }
+
+    /* ===== Sidebar Splitter ===== */
+    #sb-split { width: 4px; cursor: col-resize; background: transparent; flex-shrink: 0; }
+    #sb-split:hover, #sb-split.drag { background: var(--accent-blue); opacity: 0.5; }
+
+    /* ===== Notifications ===== */
+    #notifs {
+      position: fixed; bottom: 28px; right: 16px;
+      display: flex; flex-direction: column; gap: 6px;
+      z-index: 9000; max-width: 320px; pointer-events: none;
+    }
+    .notif {
+      background: var(--bg-secondary); border: 1px solid var(--border-color);
+      border-radius: 5px; padding: 10px 14px; font-size: 12px;
+      color: var(--text-primary); box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+      pointer-events: all; animation: slideIn 0.2s ease;
+    }
+    .notif.info { border-left: 3px solid var(--accent-blue); }
+    .notif.ok { border-left: 3px solid #4ec9b0; }
+    .notif.err { border-left: 3px solid var(--accent-red); }
+    .notif.warn { border-left: 3px solid var(--accent-yellow); }
+    @keyframes slideIn { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+
+    /* ===== Modal ===== */
+    #modal-bg {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      z-index: 8000; display: none; align-items: center; justify-content: center;
+    }
+    #modal-bg.vis { display: flex; }
+    #modal {
+      background: var(--bg-secondary); border: 1px solid var(--border-color);
+      border-radius: 6px; padding: 20px 24px; min-width: 320px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.5);
+    }
+    #modal h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+    #modal input {
+      width: 100%; padding: 6px 10px; background: var(--bg-input);
+      border: 1px solid var(--border-color); color: var(--text-primary);
+      font-size: 13px; border-radius: 3px; outline: none;
+    }
+    #modal input:focus { border-color: var(--border-focus); }
+    .modal-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+    .modal-btn {
+      padding: 6px 16px; border-radius: 3px; border: none; cursor: pointer;
+      font-size: 12px; transition: opacity 0.1s;
+    }
+    .modal-btn:hover { opacity: 0.85; }
+    .modal-btn.ok { background: var(--accent-blue); color: white; }
+    .modal-btn.cancel { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); }
+
+    /* ===== Loading ===== */
+    #loading {
+      position: fixed; inset: 0; background: var(--bg-primary);
+      z-index: 99999; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+    }
+    #loading.done { display: none; }
+    .ld-logo { font-size: 56px; color: #4fc1ff; }
+    .ld-spin {
+      width: 36px; height: 36px;
+      border: 3px solid rgba(79,193,255,0.2); border-top-color: #4fc1ff;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to{transform:rotate(360deg)} }
+    .ld-msg { font-size: 14px; color: var(--text-secondary); }
+    .ld-bar-bg { width: 200px; height: 3px; background: rgba(255,255,255,0.1); border-radius: 2px; }
+    .ld-bar { height: 100%; background: var(--accent-blue); border-radius: 2px; transition: width 0.3s; width: 0; }
+
+    /* Debug / Ext panel */
+    #debug-panel, #ext-panel { display: none; flex-direction: column; flex: 1; overflow-y: auto; padding: 8px; }
+    #debug-panel.vis, #ext-panel.vis { display: flex; }
+    .dbv-item { padding: 2px 4px; font-family: var(--font-code); font-size: 12px; }
+    .dbv-k { color: #9cdcfe; }
+    .dbv-v { color: #ce9178; }
+    .ext-pkg { display: flex; align-items: center; gap: 6px; padding: 3px 8px; font-size: 12px; }
+    .ext-install-row { display: flex; gap: 6px; padding: 8px; }
+    .ext-install-row input {
+      flex: 1; padding: 5px 8px; background: var(--bg-input);
+      border: 1px solid var(--border-color); color: var(--text-primary);
+      font-size: 12px; border-radius: 3px; outline: none;
+    }
+    .ext-install-row button {
+      padding: 5px 10px; background: var(--accent-blue); border: none;
+      color: white; border-radius: 3px; cursor: pointer; font-size: 12px;
+    }
+
+    /* Markdown preview in output */
+    .md-preview {
+      padding: 16px; color: var(--text-primary); font-size: 14px;
+      line-height: 1.7; overflow-y: auto; flex: 1;
+    }
+    .md-preview h1,.md-preview h2,.md-preview h3,.md-preview h4 { color: #fff; margin: 1em 0 .5em; }
+    .md-preview p { margin: .6em 0; }
+    .md-preview code { background: rgba(255,255,255,0.1); padding: 2px 5px; border-radius: 3px; font-family: var(--font-code); font-size: 12px; }
+    .md-preview pre { background: rgba(0,0,0,0.3); padding: 12px; border-radius: 5px; overflow-x: auto; margin: .8em 0; }
+    .md-preview pre code { background: none; padding: 0; }
+    .md-preview blockquote { border-left: 3px solid var(--accent-blue); padding-left: 12px; color: var(--text-secondary); }
+    .md-preview ul,.md-preview ol { padding-left: 20px; }
+    .md-preview table { border-collapse: collapse; width: 100%; }
+    .md-preview td,.md-preview th { border: 1px solid var(--border-color); padding: 6px 10px; }
+    .md-preview th { background: rgba(255,255,255,0.07); }
+    .md-preview a { color: var(--text-link); }
+    .md-preview hr { border: none; border-top: 1px solid var(--border-color); margin: 1em 0; }
+  </style>
+</head>
+<body>
+<!-- Loading -->
+<div id="loading">
+  <div class="ld-logo"><i class="fas fa-code"></i></div>
+  <div class="ld-spin"></div>
+  <div class="ld-msg" id="ld-msg">WebIDE を初期化中...</div>
+  <div class="ld-bar-bg"><div class="ld-bar" id="ld-bar"></div></div>
+</div>
+
+<!-- Title Bar -->
+<div id="titlebar">
+  <i class="fas fa-laptop-code title-icon"></i>
+  <span class="title-name">WebIDE</span>
+  <span class="title-sub">— Multi-Language Browser IDE</span>
+  <div class="spacer"></div>
+  <button class="hdr-btn run-hdr" id="hdr-run" onclick="IDE.runCode()">
+    <i class="fas fa-play"></i> 実行
+  </button>
+  <button class="hdr-btn stop-hdr" id="hdr-stop" onclick="IDE.stopCode()">
+    <i class="fas fa-stop"></i> 停止
+  </button>
+</div>
+
+<!-- Menu Bar -->
+<div id="menubar" onclick="event.stopPropagation()">
+  <div class="menu-item" onclick="toggleMenu(this)">ファイル
+    <div class="menu-dropdown">
+      <div class="menu-dd-item" onclick="UI.newFile()"><span>新しいファイル</span><span class="kbd">Ctrl+N</span></div>
+      <div class="menu-dd-item" onclick="UI.newFolder()"><span>新しいフォルダ</span><span class="kbd">Ctrl+Shift+N</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-dd-item" onclick="UI.openPicker()"><span>ファイルを開く</span><span class="kbd">Ctrl+O</span></div>
+      <div class="menu-dd-item" onclick="UI.openZipPicker()"><span>ZIPを開く</span><span class="kbd">Ctrl+Shift+O</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-dd-item" onclick="UI.save()"><span>保存</span><span class="kbd">Ctrl+S</span></div>
+      <div class="menu-dd-item" onclick="UI.saveAs()"><span>名前を付けて保存</span><span class="kbd">Ctrl+Shift+S</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-dd-item" onclick="UI.closeTab()"><span>タブを閉じる</span><span class="kbd">Ctrl+W</span></div>
+    </div>
+  </div>
+  <div class="menu-item" onclick="toggleMenu(this)">編集
+    <div class="menu-dropdown">
+      <div class="menu-dd-item" onclick="meExec('undo')"><span>元に戻す</span><span class="kbd">Ctrl+Z</span></div>
+      <div class="menu-dd-item" onclick="meExec('redo')"><span>やり直す</span><span class="kbd">Ctrl+Y</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-dd-item" onclick="meExec('editor.action.formatDocument')"><span>フォーマット</span><span class="kbd">Shift+Alt+F</span></div>
+      <div class="menu-dd-item" onclick="meExec('editor.action.commentLine')"><span>行コメント切り替え</span><span class="kbd">Ctrl+/</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-dd-item" onclick="meExec('actions.find')"><span>検索</span><span class="kbd">Ctrl+F</span></div>
+      <div class="menu-dd-item" onclick="meExec('editor.action.startFindReplaceAction')"><span>置換</span><span class="kbd">Ctrl+H</span></div>
+    </div>
+  </div>
+  <div class="menu-item" onclick="toggleMenu(this)">表示
+    <div class="menu-dropdown">
+      <div class="menu-dd-item" onclick="UI.toggleSidebar()"><span>サイドバー</span><span class="kbd">Ctrl+B</span></div>
+      <div class="menu-dd-item" onclick="UI.togglePanel()"><span>パネル</span><span class="kbd">Ctrl+J</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-dd-item" onclick="IDE.zoomIn()"><span>ズームイン</span><span class="kbd">Ctrl++</span></div>
+      <div class="menu-dd-item" onclick="IDE.zoomOut()"><span>ズームアウト</span><span class="kbd">Ctrl+-</span></div>
+      <div class="menu-dd-item" onclick="IDE.resetZoom()"><span>ズームリセット</span><span class="kbd">Ctrl+0</span></div>
+    </div>
+  </div>
+  <div class="menu-item" onclick="toggleMenu(this)">実行
+    <div class="menu-dropdown">
+      <div class="menu-dd-item" onclick="IDE.runCode()"><span><i class="fas fa-play" style="color:#4ec9b0;margin-right:4px"></i>実行</span><span class="kbd">F5</span></div>
+      <div class="menu-dd-item" onclick="IDE.stopCode()"><span><i class="fas fa-stop" style="color:#f48771;margin-right:4px"></i>停止</span><span class="kbd">F6</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-dd-item" onclick="IDE.clearTerm()"><span>ターミナルクリア</span><span class="kbd">Ctrl+K</span></div>
+    </div>
+  </div>
+  <div class="menu-item" onclick="toggleMenu(this)">テーマ
+    <div class="menu-dropdown">
+      <div class="menu-dd-item" onclick="IDE.setTheme('vsdark')">Dark (VS Code)</div>
+      <div class="menu-dd-item" onclick="IDE.setTheme('vslight')">Light</div>
+      <div class="menu-dd-item" onclick="IDE.setTheme('monokai')">Monokai</div>
+      <div class="menu-dd-item" onclick="IDE.setTheme('dracula')">Dracula</div>
+      <div class="menu-dd-item" onclick="IDE.setTheme('hcblack')">High Contrast</div>
+    </div>
+  </div>
+</div>
+
+<!-- Main Layout -->
+<div id="main-layout">
+  <!-- Activity Bar -->
+  <div id="activitybar">
+    <button class="act-btn active" id="act-explorer" title="エクスプローラー" onclick="switchAct('explorer')"><i class="fas fa-copy"></i></button>
+    <button class="act-btn" id="act-search" title="検索" onclick="switchAct('search')"><i class="fas fa-search"></i></button>
+    <button class="act-btn" id="act-debug" title="デバッグ" onclick="switchAct('debug')"><i class="fas fa-bug"></i></button>
+    <button class="act-btn" id="act-ext" title="パッケージ" onclick="switchAct('ext')"><i class="fas fa-puzzle-piece"></i></button>
+    <div class="act-spacer"></div>
+    <button class="act-btn" title="設定" onclick="notify('設定はメニューバーから変更できます', 'info')"><i class="fas fa-cog"></i></button>
+  </div>
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <!-- Explorer -->
+    <div id="exp-panel" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+      <div class="sb-title">
+        エクスプローラー
+        <div class="sb-actions">
+          <button onclick="UI.newFile(event)" title="新規ファイル"><i class="fas fa-file-plus"></i></button>
+          <button onclick="UI.newFolder(event)" title="新規フォルダ"><i class="fas fa-folder-plus"></i></button>
+          <button onclick="UI.openZipPicker()" title="ZIPを開く"><i class="fas fa-file-archive"></i></button>
+          <button onclick="FS.renderTree()" title="更新"><i class="fas fa-sync-alt"></i></button>
+        </div>
+      </div>
+      <div id="file-tree"></div>
+    </div>
+    <!-- Search -->
+    <div id="search-panel">
+      <div class="sb-title">検索</div>
+      <div class="si-wrap">
+        <input type="text" id="gs-input" placeholder="ファイル内を検索..." oninput="doSearch(this.value)">
+      </div>
+      <div id="search-results"></div>
+    </div>
+    <!-- Debug -->
+    <div id="debug-panel">
+      <div class="sb-title">デバッグ</div>
+      <button style="margin:8px;padding:7px 12px;background:#0d7a3e;border:none;color:white;border-radius:4px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:6px" onclick="IDE.runCode()">
+        <i class="fas fa-play"></i> 実行
+      </button>
+      <div style="padding:0 8px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px">変数</div>
+      <div id="dbg-vars" style="padding:0 8px"></div>
+    </div>
+    <!-- Extensions -->
+    <div id="ext-panel">
+      <div class="sb-title">インストール済みパッケージ</div>
+      <div id="pkg-list"></div>
+      <div class="sb-title" style="margin-top:8px">Pythonパッケージ (micropip)</div>
+      <div class="ext-install-row">
+        <input type="text" id="pkg-in" placeholder="例: numpy">
+        <button onclick="IDE.installPkg()">インストール</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar Splitter -->
+  <div id="sb-split"></div>
+
+  <!-- Editor Area -->
+  <div id="editor-area">
+    <!-- Tabs -->
+    <div id="tab-bar">
+      <button class="tab-new" onclick="UI.newFile()" title="新しいファイル">+</button>
+    </div>
+    <!-- Breadcrumb -->
+    <div id="breadcrumb">
+      <i class="fas fa-laptop-code" style="color:#4fc1ff;font-size:11px"></i>
+      <span style="color:var(--text-muted)">/</span>
+      <span id="bc-path" style="color:var(--text-secondary)">untitled.py</span>
+    </div>
+    <!-- Editor Container -->
+    <div id="editor-container">
+      <!-- Welcome Screen -->
+      <div id="welcome">
+        <div class="wlc-logo"><i class="fas fa-laptop-code"></i></div>
+        <div class="wlc-title">WebIDE</div>
+        <div class="wlc-sub">ブラウザで動く VS Code 級マルチ言語 IDE</div>
+        <div class="wlc-btns">
+          <button class="wlc-btn primary" onclick="UI.newFile()"><i class="fas fa-file-code"></i> 新しいファイル</button>
+          <button class="wlc-btn secondary" onclick="UI.openZipPicker()"><i class="fas fa-file-archive"></i> ZIPを開く</button>
+          <button class="wlc-btn secondary" onclick="loadEx('hello_py')"><i class="fab fa-python"></i> Python</button>
+          <button class="wlc-btn secondary" onclick="loadEx('hello_js')"><i class="fab fa-js"></i> JavaScript</button>
+          <button class="wlc-btn secondary" onclick="loadEx('hello_ts')"><i class="fab fa-js-square"></i> TypeScript</button>
+          <button class="wlc-btn secondary" onclick="loadEx('hello_html')"><i class="fab fa-html5"></i> HTML</button>
+          <button class="wlc-btn secondary" onclick="loadEx('hello_md')"><i class="fab fa-markdown"></i> Markdown</button>
+          <button class="wlc-btn secondary" onclick="loadEx('hello_jsx')"><i class="fab fa-react"></i> JSX/React</button>
+        </div>
+        <div class="wlc-recent">
+          <h3>最近のファイル</h3>
+          <div id="recent-list"></div>
+        </div>
+      </div>
+      <!-- Monaco -->
+      <div id="monaco-editor"></div>
+    </div>
+    <!-- Panel Resize -->
+    <div id="panel-resize"></div>
+    <!-- Panel -->
+    <div id="panel">
+      <div id="ptabbar">
+        <div class="ptab active" id="pt-term" onclick="switchPanel('term')"><i class="fas fa-terminal"></i>ターミナル</div>
+        <div class="ptab" id="pt-preview" onclick="switchPanel('preview')"><i class="fas fa-eye"></i>プレビュー</div>
+        <div class="ptab" id="pt-out" onclick="switchPanel('out')"><i class="fas fa-list"></i>出力</div>
+        <div class="ptab" id="pt-prob" onclick="switchPanel('prob')">
+          <i class="fas fa-exclamation-triangle"></i>問題
+          <span id="prob-cnt" style="background:var(--accent-red);color:white;font-size:9px;padding:1px 5px;border-radius:9px;margin-left:4px;display:none">0</span>
+        </div>
+        <div class="psp"></div>
+        <button class="pact-btn" onclick="IDE.clearTerm()" title="クリア"><i class="fas fa-ban"></i></button>
+        <button class="pact-btn" onclick="UI.togglePanel()" title="閉じる"><i class="fas fa-times"></i></button>
+      </div>
+      <div id="term-wrap" class="active">
+        <div id="term-out"></div>
+        <div id="term-input-row">
+          <span class="term-prompt" id="term-prompt">&gt;&gt;&gt; </span>
+          <input type="text" id="term-in" placeholder="コードを入力... (Python/JS)" autocomplete="off" spellcheck="false">
+          <button class="run-btn" id="run-btn" onclick="IDE.runCode()">
+            <i class="fas fa-play"></i> 実行 F5
+          </button>
+        </div>
+      </div>
+      <div id="preview-wrap">
+        <div id="preview-toolbar">
+          <span id="preview-kind" style="font-size:11px;color:var(--text-secondary)">プレビュー</span>
+          <button onclick="IDE.refreshPreview()"><i class="fas fa-sync-alt"></i> 更新</button>
+          <button onclick="IDE.openPreviewNewTab()"><i class="fas fa-external-link-alt"></i> 別タブ</button>
+          <div style="flex:1"></div>
+          <button onclick="switchPanel('term')">ターミナルに切替</button>
+        </div>
+        <iframe id="preview-frame" sandbox="allow-scripts allow-same-origin allow-forms allow-modals"></iframe>
+      </div>
+      <div id="out-wrap">
+        <div id="out-text" style="flex:1;overflow-y:auto;padding:8px 12px;font-family:var(--font-code);font-size:13px;line-height:1.5;white-space:pre-wrap;color:var(--text-primary)"></div>
+      </div>
+      <div id="prob-wrap">
+        <div id="prob-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Status Bar -->
+<div id="statusbar">
+  <div class="si" onclick="switchAct('explorer')"><i class="ic fas fa-code-branch"></i><span>main</span></div>
+  <div class="ssp"></div>
+  <div class="si" id="py-status"><div id="py-dot" class="loading"></div><span id="py-txt">Python 読み込み中...</span></div>
+  <div class="si"><span id="cursor-info">行 1, 列 1</span></div>
+  <div class="si"><span>UTF-8</span></div>
+  <div class="si"><span id="lang-info">Python</span></div>
+  <div class="si"><span>スペース: 4</span></div>
+</div>
+
+<!-- Context Menus -->
+<div class="ctx-menu" id="ctx-editor">
+  <div class="ci" onclick="meExec('editor.action.formatDocument')"><span>フォーマット</span><span class="ks">Shift+Alt+F</span></div>
+  <div class="ci" onclick="meExec('editor.action.commentLine')"><span>コメント切り替え</span><span class="ks">Ctrl+/</span></div>
+  <div class="cs"></div>
+  <div class="ci" onclick="meExec('editor.action.clipboardCutAction')"><span>切り取り</span><span class="ks">Ctrl+X</span></div>
+  <div class="ci" onclick="meExec('editor.action.clipboardCopyAction')"><span>コピー</span><span class="ks">Ctrl+C</span></div>
+  <div class="ci" onclick="meExec('editor.action.clipboardPasteAction')"><span>貼り付け</span><span class="ks">Ctrl+V</span></div>
+  <div class="cs"></div>
+  <div class="ci" onclick="IDE.runCode()"><span><i class="fas fa-play" style="color:#4ec9b0;margin-right:4px"></i> 実行</span><span class="ks">F5</span></div>
+</div>
+<div class="ctx-menu" id="ctx-file"></div>
+
+<!-- Modal -->
+<div id="modal-bg">
+  <div id="modal">
+    <h3 id="modal-h">新しいファイル</h3>
+    <input type="text" id="modal-in">
+    <div class="modal-acts">
+      <button class="modal-btn cancel" onclick="closeModal()">キャンセル</button>
+      <button class="modal-btn ok" onclick="confirmModal()">確定</button>
+    </div>
+  </div>
+</div>
+
+<!-- Notifications -->
+<div id="notifs"></div>
+
+<!-- Hidden File Pickers -->
+<input type="file" id="file-picker" accept=".py,.txt,.json,.csv,.md,.html,.css,.js,.ts,.jsx,.tsx,.xml,.svg" style="display:none" multiple onchange="handleFilePick(event)">
+<input type="file" id="zip-picker" accept=".zip" style="display:none" onchange="handleZipPick(event)">
+<input type="file" id="folder-picker" style="display:none" webkitdirectory multiple onchange="handleFolderPick(event)">
+
+<script>
+// ===================================================
+// WebIDE - Multi-Language Browser IDE
+// ===================================================
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+function notify(msg, type, dur) {
+  type = type || 'info'; dur = dur || 3500;
+  const el = document.createElement('div');
+  el.className = 'notif ' + type;
+  el.textContent = msg;
+  $('notifs').appendChild(el);
+  setTimeout(() => { el.style.opacity='0'; el.style.transition='opacity 0.3s'; setTimeout(()=>el.remove(), 300); }, dur);
+}
+
+// ===================================================
+// IndexedDB ストレージ層
+// ===================================================
+const IDB = (() => {
+  const DB_NAME    = 'webide_db';
+  const DB_VERSION = 1;
+  const STORE_NAME = 'fs_snapshot'; // objectStore name
+  const RECORD_KEY = 'snapshot';    // 単一レコードキー
+
+  let _db = null; // 接続済み IDBDatabase
+
+  /** DB を開いて返す（初回のみ実際にオープン） */
+  function open() {
+    if (_db) return Promise.resolve(_db);
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = e => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME); // keyPath なし・out-of-line key
+        }
+      };
+      req.onsuccess = e => { _db = e.target.result; resolve(_db); };
+      req.onerror   = e => reject(e.target.error);
+    });
+  }
+
+  /** スナップショットを保存（上書き） */
+  async function save(data) {
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const tx    = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req   = store.put(data, RECORD_KEY);
+      req.onsuccess = () => resolve();
+      req.onerror   = e  => reject(e.target.error);
+    });
+  }
+
+  /** スナップショットを読み込む（なければ null） */
+  async function load() {
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const tx    = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req   = store.get(RECORD_KEY);
+      req.onsuccess = e => resolve(e.target.result ?? null);
+      req.onerror   = e => reject(e.target.error);
+    });
+  }
+
+  /** IDB レコードを完全削除（リセット用） */
+  async function clear() {
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const tx    = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req   = store.delete(RECORD_KEY);
+      req.onsuccess = () => resolve();
+      req.onerror   = e  => reject(e.target.error);
+    });
+  }
+
+  return { open, save, load, clear };
+})();
+
+// ===================================================
+// File System (supports folders)
+// ===================================================
+const FS = (() => {
+  let cnt = 1;
+  // nodes: Map of id -> { id, name, type:'file'|'folder', content?, lang?, saved?, parent:null|id, children:[] }
+  const nodes = new Map();
+  // root children order
+  const roots = [];
+
+  function langOf(name) {
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    const m = {
+      py:'python', js:'javascript', ts:'typescript',
+      jsx:'javascript', tsx:'typescript',
+      json:'json', md:'markdown', html:'html', css:'css',
+      xml:'xml', svg:'xml', txt:'plaintext', csv:'plaintext'
+    };
+    return m[ext] || 'plaintext';
+  }
+
+  function langIcon(name) {
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    const icons = {
+      py: {i:'fab fa-python', c:'#4fc1ff'},
+      js: {i:'fab fa-js-square', c:'#f7df1e'},
+      jsx: {i:'fab fa-react', c:'#61dafb'},
+      ts: {i:'fas fa-code', c:'#3178c6'},
+      tsx: {i:'fab fa-react', c:'#3178c6'},
+      html: {i:'fab fa-html5', c:'#e34c26'},
+      css: {i:'fab fa-css3-alt', c:'#264de4'},
+      json: {i:'fas fa-brackets-curly', c:'#ffe04b'},
+      md: {i:'fab fa-markdown', c:'#ffffff'},
+      xml: {i:'fas fa-code', c:'#ff9800'},
+      svg: {i:'fas fa-vector-square', c:'#ffb300'},
+      csv: {i:'fas fa-table', c:'#4ec9b0'},
+      txt: {i:'fas fa-file-alt', c:'#969696'},
+    };
+    return icons[ext] || {i:'fas fa-file-code', c:'#969696'};
+  }
+
+  function createFile(name, content, parentId) {
+    content = content || '';
+    const id = 'f' + cnt++;
+    const f = { id, name, type:'file', content, saved:content, lang:langOf(name), parent:parentId||null };
+    nodes.set(id, f);
+    if (parentId) {
+      const p = nodes.get(parentId);
+      if (p && p.type === 'folder') { p.children = p.children || []; p.children.push(id); }
+    } else {
+      roots.push(id);
+    }
+    flush(); // 新規作成は即時保存
+    return f;
+  }
+
+  function createFolder(name, parentId) {
+    const id = 'd' + cnt++;
+    const folder = { id, name, type:'folder', children:[], parent:parentId||null, open:true };
+    nodes.set(id, folder);
+    if (parentId) {
+      const p = nodes.get(parentId);
+      if (p && p.type === 'folder') { p.children = p.children || []; p.children.unshift(id); }
+    } else {
+      roots.unshift(id);
+    }
+    flush(); // 新規作成は即時保存
+    return folder;
+  }
+
+  function get(id) { return nodes.get(id); }
+
+  function del(id) {
+    const node = nodes.get(id);
+    if (!node) return;
+    // Remove from parent or roots
+    if (node.parent) {
+      const p = nodes.get(node.parent);
+      if (p) p.children = p.children.filter(c => c !== id);
+    } else {
+      const idx = roots.indexOf(id);
+      if (idx !== -1) roots.splice(idx, 1);
+    }
+    // Recursively delete children
+    if (node.type === 'folder' && node.children) {
+      [...node.children].forEach(cid => del(cid));
+    }
+    nodes.delete(id);
+    flush(); // 削除は即時保存
+  }
+
+  function allFiles() {
+    const result = [];
+    function walk(ids) {
+      for (const id of ids) {
+        const n = nodes.get(id);
+        if (!n) continue;
+        if (n.type === 'file') result.push(n);
+        else if (n.type === 'folder') walk(n.children || []);
+      }
+    }
+    walk(roots);
+    return result;
+  }
+
+  function save(id) {
+    const f = nodes.get(id);
+    if (f && f.type==='file') { f.saved = f.content; flush(); } // Ctrl+S は即時保存
+  }
+  function dirty(id) { const f = nodes.get(id); return f && f.type==='file' ? f.content !== f.saved : false; }
+
+  function renderTree() {
+    const tree = $('file-tree');
+    tree.innerHTML = '';
+
+    function buildNode(id, depth) {
+      const n = nodes.get(id);
+      if (!n) return null;
+      if (n.type === 'folder') {
+        return buildFolder(n, depth);
+      } else {
+        return buildFileEl(n, depth);
+      }
+    }
+
+    function buildFolder(folder, depth) {
+      const wrap = document.createElement('div');
+
+      const row = document.createElement('div');
+      row.className = 'ft-folder' + (folder.open ? ' open' : '');
+      row.style.paddingLeft = (8 + depth * 16) + 'px';
+      row.dataset.id = folder.id;
+      row.innerHTML = `<span class="ft-arrow"><i class="fas fa-chevron-right"></i></span>`
+        + `<span class="ft-icon"><i class="fas fa-folder${folder.open ? '-open' : ''}"></i></span>`
+        + `<span class="ft-name">${esc(folder.name)}</span>`
+        + `<div class="ft-acts">`
+        + `<button onclick="UI.newFileInFolder(event,'${folder.id}')" title="ファイル追加"><i class="fas fa-file-plus"></i></button>`
+        + `<button onclick="UI.newFolderInFolder(event,'${folder.id}')" title="フォルダ追加"><i class="fas fa-folder-plus"></i></button>`
+        + `<button onclick="UI.renameFolderNode(event,'${folder.id}')" title="名前変更"><i class="fas fa-pen"></i></button>`
+        + `<button onclick="UI.delFolderNode(event,'${folder.id}')" title="削除" class="danger"><i class="fas fa-trash"></i></button>`
+        + `</div>`;
+
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.ft-acts')) return;
+        folder.open = !folder.open;
+        renderTree();
+        FS.persist(); // 開閉状態も保存
+      });
+      row.addEventListener('contextmenu', e => showFolderCtx(e, folder.id));
+      wrap.appendChild(row);
+
+      if (folder.open) {
+        const childWrap = document.createElement('div');
+        for (const cid of (folder.children || [])) {
+          const el = buildNode(cid, depth + 1);
+          if (el) childWrap.appendChild(el);
+        }
+        wrap.appendChild(childWrap);
+      }
+      return wrap;
+    }
+
+    function buildFileEl(f, depth) {
+      const d = document.createElement('div');
+      d.className = 'ft-item' + (f.id === IDE.state.active ? ' active' : '') + (dirty(f.id) ? ' unsaved' : '');
+      d.dataset.id = f.id;
+      d.style.paddingLeft = (16 + depth * 16) + 'px';
+      const ic = langIcon(f.name);
+      d.innerHTML = `<span class="ft-icon"><i class="${ic.i}" style="color:${ic.c}"></i></span>`
+        + `<span class="ft-name">${esc(f.name)}</span>`
+        + `<div class="ft-acts">`
+        + `<button onclick="UI.renameFile(event,'${f.id}')" title="名前変更"><i class="fas fa-pen"></i></button>`
+        + `<button onclick="UI.delFile(event,'${f.id}')" title="削除"><i class="fas fa-trash"></i></button>`
+        + `</div>`;
+      d.addEventListener('click', () => IDE.open(f.id));
+      d.addEventListener('contextmenu', e => showFileCtx(e, f.id));
+      return d;
+    }
+
+    for (const id of roots) {
+      const el = buildNode(id, 0);
+      if (el) tree.appendChild(el);
+    }
+
+    // Recent list in welcome
+    const rl = $('recent-list');
+    if (rl) {
+      const files = allFiles().slice(0,5);
+      rl.innerHTML = files.map(f => {
+        const ic = langIcon(f.name);
+        return `<div class="wlc-r-item" onclick="IDE.open('${f.id}')"><i class="${ic.i}" style="color:${ic.c};margin-right:6px"></i>${esc(f.name)}</div>`;
+      }).join('');
+    }
+  }
+
+  // ====================================================
+  // 自動保存 (IndexedDB バックエンド)
+  // ====================================================
+  let _persistTimer = null;
+  // IndexedDB の put は非同期なので、短時間に複数回呼ばれても
+  // 古いスナップショットが新しいスナップショットを上書きしないよう直列化する。
+  let _writeChain = Promise.resolve();
+
+  /** デバウンス付き非同期保存（通常の変更で呼ぶ） */
+  function persist() {
+    clearTimeout(_persistTimer);
+    _persistTimer = setTimeout(() => _doSave().catch(e => console.warn('[FS] persist error:', e)), 400);
+  }
+
+  /** 即時保存（内部実装）*/
+  async function _doSave() {
+    const nodesArr = [];
+    nodes.forEach((v, k) => {
+      // children は配列なので structuredClone 相当のディープコピーをする
+      // （Object.assign は参照コピーになり、後続変更が混入する危険がある）
+      const copy = {
+        id:      v.id,
+        name:    v.name,
+        type:    v.type,
+        parent:  v.parent,
+      };
+      if (v.type === 'file') {
+        copy.content = v.content;
+        copy.saved   = v.saved;
+        copy.lang    = v.lang;
+      } else {
+        // folder
+        copy.children = v.children ? [...v.children] : [];
+        copy.open     = v.open;
+      }
+      nodesArr.push([k, copy]);
+    });
+    const data = { nodesArr, roots: [...roots], cnt, v: 3 };
+    _writeChain = _writeChain
+      .catch(() => {})
+      .then(() => IDB.save(data));
+    await _writeChain;
+  }
+
+  /**
+   * デバウンスをキャンセルして即時保存。
+   * beforeunload / ZIP展開完了 など「確実に書きたい」場面で使う。
+   * 非同期だが呼び出し元は await しなくてよい（fire-and-forget）。
+   */
+  function flush() {
+    clearTimeout(_persistTimer);
+    _persistTimer = null;
+    return _doSave().catch(e => console.warn('[FS] flush error:', e));
+  }
+
+  /**
+   * IDB から読み込んでメモリ上の FS を復元する（非同期）。
+   * localStorage の旧データがあれば IDB へ自動マイグレーションする。
+   * @returns {Promise<boolean>} 復元できた場合 true
+   */
+  async function restore() {
+    try {
+      // ── IDB から読み込み ──
+      let raw = await IDB.load();
+
+      // ── IDB にデータがなければ localStorage からマイグレーション ──
+      if (!raw) {
+        for (const lsKey of ['webide_v2', 'webide_v1']) {
+          const lsRaw = localStorage.getItem(lsKey);
+          if (lsRaw) {
+            try {
+              raw = JSON.parse(lsRaw);
+              if (raw) {
+                // IDB へ移行して localStorage を削除
+                await IDB.save(raw);
+                localStorage.removeItem('webide_v2');
+                localStorage.removeItem('webide_v1');
+                console.info('[FS] migrated from localStorage to IndexedDB');
+                break;
+              }
+            } catch(_) {}
+          }
+        }
+      }
+
+      if (!raw) return false;
+
+      const arr = raw.nodesArr || raw.nodes;
+
+      // raw オブジェクト自体が存在すれば「保存済み状態あり」として扱う
+      // arr が空配列（全削除後）でも復元成功とみなす
+      if (!Array.isArray(arr)) return false; // 旧フォーマットで arr が存在しない場合のみ弾く
+
+      nodes.clear();
+      roots.length = 0;
+
+      for (const [k, v] of arr) {
+        if (v.type === 'folder' && !Array.isArray(v.children)) v.children = [];
+        nodes.set(k, v);
+      }
+      roots.push(...(raw.roots || []));
+
+      // cnt の再計算（ID 重複防止）
+      let maxN = 0;
+      nodes.forEach((_, k) => { const n = parseInt(k.slice(1)) || 0; if (n > maxN) maxN = n; });
+      cnt = Math.max(raw.cnt || 0, maxN + 1);
+
+       // ノードが 0 件でも「全削除後の保存済み状態」の可能性がある。
+       // false を返すと boot() が初期サンプルを再生成してしまうため、
+       // 有効なスナップショットを読み込めた時点で復元成功とする。
+       return true;
+    } catch(e) {
+      console.warn('[FS] restore error:', e);
+      return false;
+    }
+  }
+
+  return { createFile, createFolder, get, del, allFiles, save, dirty, renderTree, persist, flush, restore, langOf, langIcon, _nodes: nodes, _roots: roots };
+})();
+
+// ===================================================
+// Language Runners
+// ===================================================
+const RUNNERS = {
+  // JavaScript runner (eval with sandboxed console)
+  runJS(code, tlog) {
+    return new Promise(resolve => {
+      const logs = [];
+      const fakeCons = {
+        log: (...a) => { const s = a.map(x => typeof x === 'object' ? JSON.stringify(x, null, 2) : String(x)).join(' '); tlog(s, 'tl-out'); logs.push(s); },
+        error: (...a) => { const s = a.map(x => String(x)).join(' '); tlog(s, 'tl-err'); },
+        warn: (...a) => { const s = a.map(x => String(x)).join(' '); tlog(s, 'tl-warn'); },
+        info: (...a) => { const s = a.map(x => String(x)).join(' '); tlog(s, 'tl-sys'); },
+        dir: (o) => tlog(JSON.stringify(o, null, 2), 'tl-out'),
+        table: (o) => tlog(JSON.stringify(o, null, 2), 'tl-out'),
+        time: (l) => { console._timers = console._timers||{}; console._timers[l]=performance.now(); },
+        timeEnd: (l) => {
+          const t = console._timers && console._timers[l];
+          tlog(l + ': ' + (t ? (performance.now()-t).toFixed(2)+'ms' : 'n/a'), 'tl-out');
+        },
+        assert: (cond, ...msg) => { if (!cond) tlog('Assertion failed: ' + msg.join(' '), 'tl-err'); },
+        clear: () => {},
+      };
+      const fn = new Function('console', 'alert', 'confirm', 'prompt', code);
+      const fakeAlert = (m) => { tlog('[alert] ' + m, 'tl-warn'); };
+      const fakeConfirm = (m) => { tlog('[confirm] ' + m + ' → true', 'tl-warn'); return true; };
+      const fakePrompt = (m, d) => { tlog('[prompt] ' + m + ' → ' + (d||''), 'tl-warn'); return d||''; };
+      try {
+        const result = fn(fakeCons, fakeAlert, fakeConfirm, fakePrompt);
+        if (result instanceof Promise) {
+          result.then(v => { if (v !== undefined) tlog(String(v), 'tl-out'); resolve({ok:true}); })
+                .catch(e => { tlog(e.message||String(e), 'tl-err'); resolve({ok:false}); });
+        } else {
+          resolve({ok:true});
+        }
+      } catch(e) {
+        tlog(e.message || String(e), 'tl-err');
+        resolve({ok:false});
+      }
+    });
+  },
+
+  // TypeScript runner (transpile via Babel then eval)
+  async runTS(code, tlog) {
+    try {
+      const transpiled = Babel.transform(code, {
+        presets: ['typescript'],
+        filename: 'script.ts',
+        ast: false,
+        sourceType: 'module',
+      }).code;
+      return await this.runJS(transpiled, tlog);
+    } catch(e) {
+      tlog('TypeScript エラー: ' + (e.message || String(e)), 'tl-err');
+      return {ok:false};
+    }
+  },
+
+  // JSX runner (transpile via Babel)
+  async runJSX(code, tlog, isTS) {
+    try {
+      const presets = isTS
+        ? [['typescript', {}], ['react', {runtime:'classic', pragma:'React.createElement'}]]
+        : [['react', {runtime:'classic', pragma:'React.createElement'}]];
+      const transpiled = Babel.transform(code, {
+        presets,
+        filename: isTS ? 'script.tsx' : 'script.jsx',
+        ast: false,
+        sourceType: 'module',
+      }).code;
+      return await this.runJS(transpiled, tlog);
+    } catch(e) {
+      tlog('JSX/TSX エラー: ' + (e.message || String(e)), 'tl-err');
+      return {ok:false};
+    }
+  },
+
+  // JSON runner: pretty print + validate
+  runJSON(code, tlog) {
+    try {
+      const obj = JSON.parse(code);
+      const pretty = JSON.stringify(obj, null, 2);
+      tlog('✓ 有効なJSON', 'tl-ok');
+      tlog(pretty, 'tl-out');
+      return {ok:true, output:pretty};
+    } catch(e) {
+      tlog('JSON パースエラー: ' + e.message, 'tl-err');
+      return {ok:false};
+    }
+  },
+
+  // XML runner: parse and validate
+  runXML(code, tlog) {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(code, 'application/xml');
+      const errs = doc.getElementsByTagName('parsererror');
+      if (errs.length > 0) {
+        tlog('XML パースエラー: ' + errs[0].textContent, 'tl-err');
+        return {ok:false};
+      }
+      const elements = doc.documentElement;
+      tlog(`✓ 有効なXML: <${elements.tagName}>`, 'tl-ok');
+      tlog(`要素数: ${doc.getElementsByTagName('*').length}`, 'tl-out');
+      // Show structure
+      function showTree(el, indent) {
+        const attrs = Array.from(el.attributes||[]).map(a=>`${a.name}="${a.value}"`).join(' ');
+        tlog(' '.repeat(indent*2) + `<${el.tagName}${attrs?' '+attrs:''}>`, 'tl-out');
+        Array.from(el.children).forEach(c => showTree(c, indent+1));
+      }
+      if (elements.children.length < 30) showTree(elements, 0);
+      return {ok:true};
+    } catch(e) {
+      tlog('XML エラー: ' + e.message, 'tl-err');
+      return {ok:false};
+    }
+  },
+
+  // SVG runner: validate and render inside the preview iframe
+  runSVG(code, tlog) {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(code, 'image/svg+xml');
+      const errs = doc.getElementsByTagName('parsererror');
+      const root = doc.documentElement;
+      if (errs.length > 0 || !root || root.tagName.toLowerCase() !== 'svg') {
+        const message = errs.length > 0
+          ? errs[0].textContent
+          : 'ルート要素が <svg> ではありません';
+        tlog('SVG パースエラー: ' + message, 'tl-err');
+        return {ok:false};
+      }
+
+      // XMLSerializer で正規化してから iframe に渡すことで、
+      // XML 宣言や DOCTYPE があっても確実に描画できるようにする。
+      const svg = new XMLSerializer().serializeToString(root);
+      const previewHTML = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    html, body { height: 100%; }
+    body {
+      margin: 0; padding: 24px; box-sizing: border-box;
+      display: grid; place-items: center;
+      background: #f7f8fa; color: #202124;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    svg { max-width: 100%; max-height: 100%; width: auto; height: auto; }
+  </style>
+</head>
+<body>${svg}</body>
+</html>`;
+      tlog(`✓ 有効なSVG: <svg> / 要素数 ${doc.getElementsByTagName('*').length}`, 'tl-ok');
+      return {ok:true, html:previewHTML, type:'svg'};
+    } catch(e) {
+      tlog('SVG エラー: ' + (e.message || String(e)), 'tl-err');
+      return {ok:false};
+    }
+  },
+
+  // Markdown runner: use Marked when available, otherwise use a built-in fallback.
+  runMD(code, tlog) {
+    try {
+      const inline = source => esc(source)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        .replace(/_([^_]+)_/g, '<em>$1</em>')
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+|mailto:[^)\\s]+|#[^)\s]+)\)/g,
+          '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      const lines = String(code).replace(/\r\n?/g, '\n').split('\n');
+      const output = [];
+      let paragraph = [];
+      let i = 0;
+      const flushParagraph = () => {
+        if (!paragraph.length) return;
+        output.push(`<p>${inline(paragraph.join('\n')).replace(/\n/g, '<br>')}</p>`);
+        paragraph = [];
+      };
+
+      while (i < lines.length) {
+        const line = lines[i];
+        const fence = line.match(/^\s*```([\w-]*)\s*$/);
+        if (fence) {
+          flushParagraph();
+          const lang = fence[1] ? ` class="language-${esc(fence[1])}"` : '';
+          const codeLines = [];
+          i++;
+          while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) codeLines.push(lines[i++]);
+          if (i < lines.length) i++;
+          output.push(`<pre><code${lang}>${esc(codeLines.join('\n'))}</code></pre>`);
+          continue;
+        }
+
+        const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
+        if (heading) {
+          flushParagraph();
+          const level = heading[1].length;
+          output.push(`<h${level}>${inline(heading[2])}</h${level}>`);
+          i++;
+          continue;
+        }
+
+        if (/^\s*((\*|-|_)\s*){3,}$/.test(line)) {
+          flushParagraph();
+          output.push('<hr>');
+          i++;
+          continue;
+        }
+
+        if (/^\s*>\s?/.test(line)) {
+          flushParagraph();
+          const quote = [];
+          while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+            quote.push(lines[i++].replace(/^\s*>\s?/, ''));
+          }
+          output.push(`<blockquote>${inline(quote.join('\n')).replace(/\n/g, '<br>')}</blockquote>`);
+          continue;
+        }
+
+        if (/^\s*[-+*]\s+/.test(line)) {
+          flushParagraph();
+          const items = [];
+          while (i < lines.length && /^\s*[-+*]\s+/.test(lines[i])) {
+            items.push(lines[i++].replace(/^\s*[-+*]\s+/, ''));
+          }
+          output.push(`<ul>${items.map(item => `<li>${inline(item)}</li>`).join('')}</ul>`);
+          continue;
+        }
+
+        if (/^\s*\d+\.\s+/.test(line)) {
+          flushParagraph();
+          const items = [];
+          while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+            items.push(lines[i++].replace(/^\s*\d+\.\s+/, ''));
+          }
+          output.push(`<ol>${items.map(item => `<li>${inline(item)}</li>`).join('')}</ol>`);
+          continue;
+        }
+
+        if (!line.trim()) flushParagraph();
+        else paragraph.push(line);
+        i++;
+      }
+      flushParagraph();
+
+      const canUseMarked = typeof marked !== 'undefined' && typeof marked.parse === 'function';
+      const html = canUseMarked ? marked.parse(code) : output.join('\n');
+      tlog(
+        canUseMarked
+          ? '✓ Markdown レンダリング完了 → プレビュータブで確認'
+          : '✓ Markdown レンダリング完了（内蔵エンジン） → プレビュータブで確認',
+        'tl-ok'
+      );
+      return {ok:true, html, type:'markdown'};
+    } catch(e) {
+      tlog('Markdown エラー: ' + e.message, 'tl-err');
+      return {ok:false};
+    }
+  },
+
+  // HTML runner: render in iframe
+  runHTML(code, tlog) {
+    tlog('✓ HTML レンダリング → プレビュータブで確認', 'tl-ok');
+    return {ok:true, html:code, type:'html'};
+  },
+
+  // CSS runner: validate + preview
+  runCSS(code, tlog) {
+    // Check for syntax issues using a style element
+    const style = document.createElement('style');
+    style.textContent = code;
+    document.head.appendChild(style);
+    const sheet = style.sheet;
+    const rules = sheet ? sheet.cssRules.length : 0;
+    document.head.removeChild(style);
+    tlog(`✓ CSS: ${rules} ルール検出`, 'tl-ok');
+    // Create preview with CSS applied
+    const previewHTML = `<!DOCTYPE html>
+<html><head><style>
+body { background: #1e1e1e; color: #ccc; font-family: sans-serif; padding: 20px; }
+.demo-box { background: #fff; color: #333; padding: 20px; border-radius: 8px; margin: 10px 0; }
+h1, h2, p { margin: 8px 0; }
+</style>
+<style>${code}</style>
+</head><body>
+<h1>CSS プレビュー</h1>
+<div class="demo-box">
+<h2>見出し2</h2>
+<p>段落テキストのサンプルです。</p>
+<button>ボタン</button>
+<input type="text" placeholder="入力フィールド">
+</div>
+</body></html>`;
+    return {ok:true, html:previewHTML, type:'html'};
+  },
+};
+
+// ===================================================
+// IDE Core
+// ===================================================
+const IDE = (() => {
+  const state = {
+    active: null,
+    tabs: [],
+    editor: null,
+    pyodide: null,
+    pyReady: false,
+    running: false,
+    hist: [],
+    hIdx: -1,
+    fontSize: 13.5,
+    minimap: true,
+    lineNums: true,
+    problems: [],
+    pkgs: [],
+    lastPreviewHTML: '',
+  };
+
+  function getOrCreateModel(f) {
+    const uri = monaco.Uri.parse('inmem:///'+f.id+'/'+f.name);
+    let m = monaco.editor.getModel(uri);
+    if (!m) {
+      m = monaco.editor.createModel(f.content, f.lang, uri);
+      m.onDidChangeContent(() => {
+        f.content = m.getValue();
+        FS.renderTree();
+        renderTabs();
+        FS.persist(); // 編集内容も自動保存
+      });
+    } else if (m.getValue() !== f.content) {
+      m.setValue(f.content);
+    }
+    return m;
+  }
+
+  function open(id) {
+    const f = FS.get(id);
+    if (!f || f.type === 'folder') return;
+    if (!state.tabs.includes(id)) state.tabs.push(id);
+    state.active = id;
+    renderTabs();
+    FS.renderTree();
+    hideWelcome();
+    if (state.editor) {
+      state.editor.setModel(getOrCreateModel(f));
+      monaco.editor.setModelLanguage(state.editor.getModel(), f.lang);
+    }
+    $('bc-path').textContent = f.name;
+    $('lang-info').textContent = langDisplayName(f.lang, f.name);
+  }
+
+  function langDisplayName(lang, name) {
+    const ext = (name.split('.').pop()||'').toLowerCase();
+    const m = {py:'Python',js:'JavaScript',jsx:'JSX (React)',ts:'TypeScript',tsx:'TSX (React)',html:'HTML',css:'CSS',json:'JSON',md:'Markdown',xml:'XML',svg:'SVG',txt:'Text',csv:'CSV'};
+    return m[ext] || lang;
+  }
+
+  function renderTabs() {
+    const bar = $('tab-bar');
+    bar.innerHTML = '';
+    const nb = document.createElement('button');
+    nb.className = 'tab-new'; nb.title = '新しいファイル (Ctrl+N)'; nb.textContent = '+';
+    nb.onclick = () => UI.newFile();
+    bar.appendChild(nb);
+    for (const id of state.tabs) {
+      const f = FS.get(id);
+      if (!f) continue;
+      const t = document.createElement('div');
+      t.className = 'tab' + (id === state.active ? ' active' : '') + (FS.dirty(id) ? ' unsaved' : '');
+      const ic = FS.langIcon(f.name);
+      t.innerHTML = `<span class="t-icon"><i class="${ic.i}" style="color:${ic.c}"></i></span>`
+        + `<span class="t-name">${esc(f.name)}</span>`
+        + `<button class="t-close" onclick="closeTab(event,'${id}')"><i class="fas fa-times"></i></button>`;
+      t.addEventListener('click', () => open(id));
+      t.addEventListener('auxclick', e => { if(e.button===1) closeTab(e,id); });
+      bar.appendChild(t);
+    }
+  }
+
+  function closeTab(e, id) {
+    if (e) e.stopPropagation();
+    const idx = state.tabs.indexOf(id);
+    if (idx === -1) return;
+    state.tabs.splice(idx, 1);
+    if (state.active === id) {
+      state.active = state.tabs[Math.min(idx, state.tabs.length-1)] || null;
+      if (state.active) open(state.active);
+      else showWelcome();
+    }
+    renderTabs();
+    FS.renderTree();
+  }
+
+  function showWelcome() {
+    $('welcome').classList.remove('hidden');
+    if (state.editor) state.editor.setModel(null);
+    $('bc-path').textContent = '';
+  }
+  function hideWelcome() { $('welcome').classList.add('hidden'); }
+
+  function save() {
+    if (!state.active) return;
+    const f = FS.get(state.active);
+    if (!f) return;
+    if (state.editor) f.content = state.editor.getValue();
+    FS.save(state.active); // 内部で flush() → 即時 IDB 保存
+    renderTabs();
+    FS.renderTree();
+    notify('保存: ' + f.name, 'ok');
+  }
+
+  // ---- Main Run dispatcher ----
+  async function runCode() {
+    if (state.running) return;
+    if (!state.active) { notify('ファイルが開かれていません', 'warn'); return; }
+    const f = FS.get(state.active);
+    if (!f) return;
+    const code = state.editor ? state.editor.getValue() : f.content;
+    f.content = code;
+
+    const ext = (f.name.split('.').pop()||'').toLowerCase();
+
+    state.running = true;
+    updateRunBtn(true);
+    switchPanel('term');
+
+    tlog('$ run ' + f.name, 'tl-in');
+    const t0 = performance.now();
+
+    try {
+      let result;
+
+      if (ext === 'py') {
+        if (!state.pyReady) { notify('Python を読み込み中...', 'warn'); state.running=false; updateRunBtn(false); return; }
+        result = await runPython(code);
+      } else if (ext === 'js') {
+        result = await RUNNERS.runJS(code, tlog);
+      } else if (ext === 'ts') {
+        result = await RUNNERS.runTS(code, tlog);
+      } else if (ext === 'jsx') {
+        result = await RUNNERS.runJSX(code, tlog, false);
+      } else if (ext === 'tsx') {
+        result = await RUNNERS.runJSX(code, tlog, true);
+      } else if (ext === 'json') {
+        result = RUNNERS.runJSON(code, tlog);
+      } else if (ext === 'svg') {
+        result = RUNNERS.runSVG(code, tlog);
+      } else if (ext === 'xml') {
+        result = RUNNERS.runXML(code, tlog);
+      } else if (ext === 'md') {
+        result = RUNNERS.runMD(code, tlog);
+      } else if (ext === 'html') {
+        result = RUNNERS.runHTML(code, tlog);
+      } else if (ext === 'css') {
+        result = RUNNERS.runCSS(code, tlog);
+      } else {
+        tlog('このファイル形式は実行に対応していません: .' + ext, 'tl-warn');
+        state.running=false; updateRunBtn(false); return;
+      }
+
+      const elapsed = ((performance.now()-t0)/1000).toFixed(3);
+      if (result && result.ok !== false) {
+        tlog(`✓ 完了 (${elapsed}s)`, 'tl-ok');
+      }
+
+      // Show preview if applicable
+      if (result && result.html) {
+        if (result.type === 'markdown') {
+          showMarkdownPreview(result.html);
+        } else if (result.type === 'svg') {
+          showSVGPreview(result.html);
+        } else {
+          showHTMLPreview(result.html);
+        }
+        switchPanel('preview');
+      }
+
+      // Output panel
+      if (result && result.output) {
+        $('out-text').textContent = result.output;
+      }
+
+    } catch(e) {
+      tlog((e.message || String(e)), 'tl-err');
+      tlog('✗ エラーが発生しました', 'tl-err');
+    } finally {
+      state.running = false;
+      updateRunBtn(false);
+    }
+  }
+
+  async function runPython(code) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        let out = '', err = '';
+        state.pyodide.setStdout({ batched: t => { out += t + '\n'; } });
+        state.pyodide.setStderr({ batched: t => { err += t + '\n'; } });
+        await state.pyodide.runPythonAsync(code);
+        if (out) out.split('\n').filter(Boolean).forEach(l => tlog(l, 'tl-out'));
+        if (err) err.split('\n').filter(Boolean).forEach(l => tlog(l, 'tl-warn'));
+        updateDbgVars();
+        $('out-text').textContent = out || '(出力なし)';
+        resolve({ok:true});
+      } catch(e) {
+        const msg = e.message || String(e);
+        msg.split('\n').filter(Boolean).forEach(l => tlog(l, 'tl-err'));
+        tlog('✗ エラーが発生しました', 'tl-err');
+        const lm = msg.match(/line (\d+)/i);
+        if (lm && state.editor) {
+          const ln = parseInt(lm[1]);
+          const m = state.editor.getModel();
+          if (m) monaco.editor.setModelMarkers(m,'pyde-rt',[{severity:monaco.MarkerSeverity.Error,startLineNumber:ln,startColumn:1,endLineNumber:ln,endColumn:999,message:msg.split('\n')[0]}]);
+        }
+        resolve({ok:false});
+      }
+    });
+  }
+
+  function stopCode() {
+    if (state.running) { tlog('\n⚠ 中断しました', 'tl-warn'); state.running = false; updateRunBtn(false); }
+  }
+
+  function updateRunBtn(run) {
+    const rb = $('run-btn'), hr = $('hdr-run'), hs = $('hdr-stop');
+    if (run) {
+      rb.className = 'run-btn stopping';
+      rb.innerHTML = '<i class="fas fa-stop"></i> 停止 F6';
+      rb.onclick = () => IDE.stopCode();
+      hr.style.display = 'none'; hs.style.display = 'flex';
+    } else {
+      rb.className = 'run-btn';
+      rb.innerHTML = '<i class="fas fa-play"></i> 実行 F5';
+      rb.onclick = () => IDE.runCode();
+      hr.style.display = 'flex'; hs.style.display = 'none';
+    }
+  }
+
+  // Preview helpers
+  function showHTMLPreview(html) {
+    $('preview-kind').textContent = 'HTML プレビュー';
+    state.lastPreviewHTML = html;
+    const frame = $('preview-frame');
+    frame.srcdoc = html;
+  }
+
+  function showMarkdownPreview(html) {
+    $('preview-kind').textContent = 'Markdown プレビュー';
+    state.lastPreviewHTML = `<!DOCTYPE html><html lang="ja"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body{background:#1e1e1e;color:#ccc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:24px;max-width:800px;margin:0 auto;line-height:1.7;}
+h1,h2,h3,h4{color:#fff;margin:1em 0 .5em;}h1{border-bottom:1px solid #3e3e42;padding-bottom:.3em;}
+code{background:rgba(255,255,255,.1);padding:2px 5px;border-radius:3px;font-family:monospace;}
+pre{background:rgba(0,0,0,.3);padding:12px;border-radius:5px;overflow-x:auto;}
+pre code{background:none;padding:0;}
+blockquote{border-left:3px solid #007acc;padding-left:12px;color:#969696;margin:0;}
+table{border-collapse:collapse;width:100%;}td,th{border:1px solid #3e3e42;padding:6px 10px;}th{background:rgba(255,255,255,.07);}
+a{color:#4dc9f0;}hr{border:none;border-top:1px solid #3e3e42;}
+img{max-width:100%;}
+</style></head><body>${html}</body></html>`;
+    const frame = $('preview-frame');
+    frame.srcdoc = state.lastPreviewHTML;
+  }
+
+  function showSVGPreview(html) {
+    $('preview-kind').textContent = 'SVG プレビュー';
+    state.lastPreviewHTML = html;
+    $('preview-frame').srcdoc = html;
+  }
+
+  function refreshPreview() {
+    if (state.active) runCode();
+  }
+
+  function openPreviewNewTab() {
+    if (!state.lastPreviewHTML) return;
+    const blob = new Blob([state.lastPreviewHTML], {type:'text/html;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  }
+
+  // REPL
+  async function repl(code) {
+    if (!code.trim()) return;
+    tlog('>>> ' + code, 'tl-in');
+    state.hist.unshift(code); state.hIdx = -1;
+
+    const active = state.active ? FS.get(state.active) : null;
+    const ext = active ? (active.name.split('.').pop()||'').toLowerCase() : 'py';
+
+    try {
+      if (ext === 'js' || ext === 'jsx') {
+        await RUNNERS.runJS(code, tlog);
+      } else if (ext === 'ts' || ext === 'tsx') {
+        await RUNNERS.runTS(code, tlog);
+      } else {
+        // Default: Python REPL
+        if (!state.pyReady) { tlog('Python を読み込み中...', 'tl-warn'); return; }
+        let out = '';
+        state.pyodide.setStdout({ batched: t => { out += t + '\n'; } });
+        state.pyodide.setStderr({ batched: t => tlog(t, 'tl-err') });
+        const r = await state.pyodide.runPythonAsync(code);
+        if (out) out.split('\n').filter(Boolean).forEach(l => tlog(l, 'tl-out'));
+        if (r !== undefined && r !== null) tlog(String(r), 'tl-out');
+        updateDbgVars();
+      }
+    } catch(e) { tlog(e.message || String(e), 'tl-err'); }
+  }
+
+  function updateDbgVars() {
+    if (!state.pyReady) return;
+    try {
+      const vs = state.pyodide.runPython(
+        "import sys\n_d={}\n[_d.update({k:repr(v)[:80]}) for k,v in list(globals().items()) if not k.startswith('_') and not callable(v) and not isinstance(v, type(sys))]\n_d"
+      ).toJs();
+      const el = $('dbg-vars');
+      if (!el) return;
+      let h = '';
+      for (const [k,v] of vs)
+        h += `<div class="dbv-item"><span class="dbv-k">${esc(k)}</span> <span style="color:var(--text-muted)">=</span> <span class="dbv-v">${esc(v)}</span></div>`;
+      el.innerHTML = h || '<span style="color:var(--text-muted);font-size:12px">変数なし</span>';
+    } catch(e) {}
+  }
+
+  function tlog(text, cls) {
+    const o = $('term-out'), d = document.createElement('div');
+    d.className = 'tl ' + (cls||'tl-out');
+    d.textContent = text;
+    o.appendChild(d);
+    o.scrollTop = o.scrollHeight;
+  }
+
+  function clearTerm() {
+    $('term-out').innerHTML = '';
+    $('out-text').textContent = '';
+    tlog('WebIDE Terminal', 'tl-sys');
+    tlog('Python 3.11 (Pyodide) / JavaScript (Browser) / TypeScript (Babel) 対応', 'tl-sys');
+    tlog('F5 で実行 | >>> で REPL | Ctrl+S で保存', 'tl-sys');
+    tlog('', 'tl-sys');
+  }
+
+  async function installPkg() {
+    const input = $('pkg-in');
+    const pkg = (input.value || '').trim();
+    if (!pkg || !state.pyReady) return;
+    input.value = '';
+    tlog('$ pip install ' + pkg, 'tl-in');
+    switchPanel('term');
+    try {
+      await state.pyodide.loadPackage('micropip');
+      const micropip = state.pyodide.pyimport('micropip');
+      await micropip.install(pkg);
+      tlog('✓ ' + pkg + ' インストール完了', 'tl-ok');
+      state.pkgs.push(pkg);
+      renderPkgs();
+      notify(pkg + ' インストール完了', 'ok');
+    } catch(e) { tlog('✗ インストール失敗: ' + (e.message||e), 'tl-err'); }
+  }
+
+  function renderPkgs() {
+    const el = $('pkg-list');
+    if (!el) return;
+    const base = ['builtins','math','random','datetime','os','sys','json','re','collections','itertools','functools'];
+    const all = [...base, ...state.pkgs];
+    el.innerHTML = all.map(p =>
+      `<div class="ext-pkg"><i class="fas fa-cube" style="color:#4fc1ff;font-size:10px"></i><span>${esc(p)}</span></div>`
+    ).join('');
+  }
+
+  function setTheme(name) {
+    const map = {vsdark:'vs-dark',vslight:'vs',monokai:'monokai',dracula:'dracula',hcblack:'hc-black'};
+    if (state.editor) monaco.editor.setTheme(map[name] || 'vs-dark');
+    notify('テーマ: ' + name, 'info');
+  }
+  function zoomIn() { state.fontSize = Math.min(state.fontSize+1, 24); if(state.editor) state.editor.updateOptions({fontSize:state.fontSize}); }
+  function zoomOut() { state.fontSize = Math.max(state.fontSize-1, 8); if(state.editor) state.editor.updateOptions({fontSize:state.fontSize}); }
+  function resetZoom() { state.fontSize = 13.5; if(state.editor) state.editor.updateOptions({fontSize:state.fontSize}); }
+  function toggleMinimap() { state.minimap=!state.minimap; if(state.editor) state.editor.updateOptions({minimap:{enabled:state.minimap}}); }
+  function toggleLineNumbers() { state.lineNums=!state.lineNums; if(state.editor) state.editor.updateOptions({lineNumbers:state.lineNums?'on':'off'}); }
+
+  return {
+    state, open, closeTab, renderTabs, save, showWelcome, hideWelcome,
+    runCode, stopCode, repl, clearTerm, installPkg, renderPkgs,
+    setTheme, zoomIn, zoomOut, resetZoom, toggleMinimap, toggleLineNumbers,
+    tlog, updateDbgVars, refreshPreview, openPreviewNewTab,
+    initEditor(e) { state.editor = e; },
+    initPy(py) { state.pyodide = py; state.pyReady = true; },
+  };
+})();
+
+// ===================================================
+// UI Helpers
+// ===================================================
+const UI = {
+  newFile(e) {
+    if (e) e.stopPropagation();
+    closeMenus();
+    showModal('新しいファイル', 'untitled.py', name => {
+      if (!name) return;
+      if (!name.includes('.')) name += '.py';
+      const f = FS.createFile(name, defaultContent(name));
+      IDE.open(f.id); FS.renderTree();
+      notify('作成: ' + name, 'ok');
+    });
+  },
+  newFileInFolder(e, folderId) {
+    if (e) e.stopPropagation();
+    showModal('新しいファイル', 'untitled.py', name => {
+      if (!name) return;
+      if (!name.includes('.')) name += '.py';
+      const f = FS.createFile(name, defaultContent(name), folderId);
+      IDE.open(f.id); FS.renderTree();
+      notify('作成: ' + name, 'ok');
+    });
+  },
+  newFolder(e) {
+    if (e) e.stopPropagation();
+    closeMenus();
+    showModal('新しいフォルダ', 'new-folder', name => {
+      if (!name) return;
+      FS.createFolder(name, null);
+      FS.renderTree();
+      notify('フォルダ作成: ' + name, 'ok');
+    });
+  },
+  newFolderInFolder(e, parentId) {
+    if (e) e.stopPropagation();
+    showModal('新しいフォルダ', 'new-folder', name => {
+      if (!name) return;
+      FS.createFolder(name, parentId);
+      FS.renderTree();
+      notify('フォルダ作成: ' + name, 'ok');
+    });
+  },
+  openPicker() { $('file-picker').click(); closeMenus(); },
+  openZipPicker() { $('zip-picker').click(); closeMenus(); },
+  openFolderPicker() { $('folder-picker').click(); closeMenus(); },
+  save() { IDE.save(); closeMenus(); },
+  saveAs() {
+    if (!IDE.state.active) return;
+    const f = FS.get(IDE.state.active);
+    if (!f) return;
+    const b = new Blob([f.content], {type:'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b); a.download = f.name; a.click();
+    notify('ダウンロード: ' + f.name, 'ok');
+    closeMenus();
+  },
+  closeTab() { if (IDE.state.active) IDE.closeTab(null, IDE.state.active); closeMenus(); },
+  toggleSidebar() {
+    const sb = $('sidebar');
+    sb.classList.toggle('collapsed');
+    if (IDE.state.editor) IDE.state.editor.layout();
+    closeMenus();
+  },
+  togglePanel() {
+    const p = $('panel');
+    p.style.display = p.style.display === 'none' ? '' : 'none';
+    if (IDE.state.editor) setTimeout(() => IDE.state.editor.layout(), 50);
+    closeMenus();
+  },
+  renameFile(e, id) {
+    if (e) e.stopPropagation();
+    const f = FS.get(id);
+    if (!f) return;
+    showModal('名前の変更', f.name, name => {
+      if (!name || name === f.name) return;
+      f.name = name; f.lang = FS.langOf(name);
+      FS.renderTree(); IDE.renderTabs();
+      if (IDE.state.editor && IDE.state.active === id)
+        monaco.editor.setModelLanguage(IDE.state.editor.getModel(), f.lang);
+      FS.flush(); // 名前変更は即時保存
+      notify('名前変更: ' + name, 'ok');
+    });
+  },
+  renameFolderNode(e, id) {
+    if (e) e.stopPropagation();
+    const folder = FS.get(id);
+    if (!folder) return;
+    showModal('フォルダ名の変更', folder.name, name => {
+      if (!name || name === folder.name) return;
+      folder.name = name;
+      FS.renderTree();
+      FS.flush(); // フォルダ名変更は即時保存
+      notify('名前変更: ' + name, 'ok');
+    });
+  },
+  delFile(e, id) {
+    if (e) e.stopPropagation();
+    const f = FS.get(id);
+    if (!f) return;
+    if (!confirm('"' + f.name + '" を削除しますか？')) return;
+    FS.del(id);
+    const idx = IDE.state.tabs.indexOf(id);
+    if (idx !== -1) {
+      IDE.state.tabs.splice(idx, 1);
+      if (IDE.state.active === id) {
+        IDE.state.active = IDE.state.tabs[0] || null;
+        if (IDE.state.active) IDE.open(IDE.state.active);
+        else IDE.showWelcome();
+      }
+    }
+    FS.renderTree(); IDE.renderTabs();
+    notify('削除: ' + f.name, 'info');
+  },
+  delFolderNode(e, id) {
+    if (e) e.stopPropagation();
+    const folder = FS.get(id);
+    if (!folder) return;
+    if (!confirm('"' + folder.name + '" フォルダと中身をすべて削除しますか？')) return;
+    // Close any open tabs from this folder
+    const allFiles = FS.allFiles();
+    function getChildFileIds(fid) {
+      const n = FS.get(fid);
+      if (!n) return [];
+      if (n.type === 'file') return [fid];
+      return (n.children||[]).flatMap(getChildFileIds);
+    }
+    const toClose = getChildFileIds(id);
+    toClose.forEach(fid => {
+      const idx = IDE.state.tabs.indexOf(fid);
+      if (idx !== -1) IDE.state.tabs.splice(idx, 1);
+      if (IDE.state.active === fid) IDE.state.active = null;
+    });
+    FS.del(id);
+    if (!IDE.state.active && IDE.state.tabs.length > 0) {
+      IDE.state.active = IDE.state.tabs[0];
+      IDE.open(IDE.state.active);
+    } else if (!IDE.state.active) {
+      IDE.showWelcome();
+    }
+    FS.renderTree(); IDE.renderTabs();
+    notify('フォルダ削除: ' + folder.name, 'info');
+  },
+};
+
+function defaultContent(name) {
+  const ext = (name.split('.').pop()||'').toLowerCase();
+  const templates = {
+    py: `# ${name}\n\ndef main():\n    print("Hello from Python!")\n\nif __name__ == "__main__":\n    main()\n`,
+    js: `// ${name}\n\nfunction main() {\n  console.log("Hello from JavaScript!");\n}\n\nmain();\n`,
+    ts: `// ${name}\n\nfunction greet(name: string): string {\n  return \`Hello, \${name}!\`;\n}\n\nconsole.log(greet("TypeScript"));\n`,
+    jsx: `// ${name}\n// Note: React is not actually loaded; this demos JSX transpilation\n\nconst App = () => {\n  const items = ["Apple", "Banana", "Cherry"];\n  return (\n    <div>\n      <h1>Hello JSX!</h1>\n      <ul>\n        {items.map(item => <li key={item}>{item}</li>)}\n      </ul>\n    </div>\n  );\n};\n\nconsole.log("JSX transpiled successfully!");\nconsole.log("Component: App");\n`,
+    tsx: `// ${name}\ninterface Item {\n  id: number;\n  label: string;\n}\n\nconst items: Item[] = [\n  { id: 1, label: "TypeScript" },\n  { id: 2, label: "React" },\n  { id: 3, label: "TSX" },\n];\n\nconst App: React.FC = () => (\n  <ul>\n    {items.map(({ id, label }) => (\n      <li key={id}>{id}. {label}</li>\n    ))}\n  </ul>\n);\n\nconsole.log("TSX items:", items.map(i=>i.label).join(", "));\n`,
+    html: `<!DOCTYPE html>\n<html lang="ja">\n<head>\n  <meta charset="UTF-8">\n  <title>${name}</title>\n  <style>\n    body { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }\n    h1 { color: #007acc; }\n  </style>\n</head>\n<body>\n  <h1>Hello, HTML!</h1>\n  <p>WebIDE でプレビュー表示されます。</p>\n  <button onclick="alert('clicked!')">クリック</button>\n</body>\n</html>\n`,
+    css: `/* ${name} */\n:root {\n  --primary: #007acc;\n  --bg: #f5f5f5;\n}\n\nbody {\n  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;\n  background: var(--bg);\n  color: #333;\n  line-height: 1.6;\n}\n\n.container {\n  max-width: 800px;\n  margin: 0 auto;\n  padding: 20px;\n}\n\nbutton {\n  background: var(--primary);\n  color: white;\n  border: none;\n  padding: 8px 16px;\n  border-radius: 4px;\n  cursor: pointer;\n}\n`,
+    json: `{\n  "name": "${name.replace('.json','')}",\n  "version": "1.0.0",\n  "description": "JSON example",\n  "data": [\n    { "id": 1, "value": "Hello" },\n    { "id": 2, "value": "World" }\n  ]\n}\n`,
+    md: `# ${name.replace('.md','')}\n\n## 概要\n\nMarkdown ドキュメントです。\n\n## 特徴\n\n- **太字**\n- *イタリック*\n- \`コード\`\n\n## コードブロック\n\n\`\`\`javascript\nconsole.log("Hello, World!");\n\`\`\`\n\n## テーブル\n\n| 名前 | 値 |\n|------|----|\n| A    | 1  |\n| B    | 2  |\n`,
+    xml: `<?xml version="1.0" encoding="UTF-8"?>\n<root>\n  <item id="1">\n    <name>Item One</name>\n    <value>100</value>\n  </item>\n  <item id="2">\n    <name>Item Two</name>\n    <value>200</value>\n  </item>\n</root>\n`,
+  };
+  return templates[ext] || `// ${name}\n`;
+}
+
+function closeTab(e, id) { IDE.closeTab(e, id); }
+
+// ---- Panel / Activity ----
+function switchPanel(name) {
+  document.querySelectorAll('.ptab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('#term-wrap,#out-wrap,#prob-wrap,#preview-wrap').forEach(c => c.classList.remove('active'));
+  const pt = $('pt-'+name);
+  const pw = $(name+'-wrap');
+  if (pt) pt.classList.add('active');
+  if (pw) pw.classList.add('active');
+  const p = $('panel');
+  p.style.display = '';
+}
+
+function switchAct(name) {
+  document.querySelectorAll('.act-btn').forEach(b => b.classList.remove('active'));
+  $('act-'+name)?.classList.add('active');
+  document.querySelectorAll('#exp-panel,#search-panel,#debug-panel,#ext-panel').forEach(p => { p.style.display='none'; p.classList.remove('vis'); });
+  const sb = $('sidebar');
+  if (sb.classList.contains('collapsed')) { sb.classList.remove('collapsed'); if(IDE.state.editor) IDE.state.editor.layout(); }
+  if (name === 'explorer') { $('exp-panel').style.display=''; }
+  else if (name === 'search') { const sp=$('search-panel'); sp.style.display='flex'; sp.classList.add('vis'); setTimeout(()=>$('gs-input')?.focus(),80); }
+  else if (name === 'debug') { const dp=$('debug-panel'); dp.style.display='flex'; dp.classList.add('vis'); }
+  else if (name === 'ext') { const ep=$('ext-panel'); ep.style.display='flex'; ep.classList.add('vis'); IDE.renderPkgs(); }
+  if (IDE.state.editor) setTimeout(() => IDE.state.editor.layout(), 50);
+}
+
+// ---- Search ----
+function doSearch(q) {
+  const res = $('search-results');
+  if (!q.trim()) { res.innerHTML = ''; return; }
+  const ql = q.toLowerCase();
+  const matches = [];
+  for (const f of FS.allFiles()) {
+    f.content.split('\n').forEach((line, i) => {
+      if (line.toLowerCase().includes(ql))
+        matches.push({f, ln: i+1, text: line.trim()});
+    });
+  }
+  res.innerHTML = matches.slice(0,50).map(m =>
+    `<div class="sr-item" onclick="gotoLine('${m.f.id}',${m.ln})"><div class="sr-file">${esc(m.f.name)}:${m.ln}</div><div class="sr-line">${esc(m.text.substring(0,60))}</div></div>`
+  ).join('') || '<div style="padding:8px;color:var(--text-muted);font-size:12px">結果なし</div>';
+}
+
+function gotoLine(fid, ln) {
+  IDE.open(fid);
+  setTimeout(() => {
+    if (IDE.state.editor) {
+      IDE.state.editor.revealLine(ln);
+      IDE.state.editor.setPosition({lineNumber:ln,column:1});
+      IDE.state.editor.focus();
+    }
+  }, 100);
+}
+
+// ---- Examples ----
+function loadEx(type) {
+  const exs = {
+    hello_py: {name:'hello.py', code:'# Hello World\nprint("Hello, World! 🌍")\n\nfor i in range(5):\n    stars = "★" * (i + 1)\n    print(f"  {stars} レベル {i+1}")\n\nprint("\\n完了!")\n'},
+    hello_js: {name:'hello.js', code:'// JavaScript Hello World\nconsole.log("Hello from JavaScript! 🚀");\n\n// Array methods\nconst nums = [1,2,3,4,5];\nconsole.log("Squares:", nums.map(n => n**2));\nconsole.log("Sum:", nums.reduce((a,b) => a+b, 0));\n\n// Async/await\nasync function fetchData() {\n  const result = await Promise.resolve({ message: "Async works!" });\n  console.log(result.message);\n}\nfetchData();\n'},
+    hello_ts: {name:'hello.ts', code:'// TypeScript Hello World\ninterface Person {\n  name: string;\n  age: number;\n}\n\nfunction greet(person: Person): string {\n  return `Hello, ${person.name}! You are ${person.age} years old.`;\n}\n\nconst people: Person[] = [\n  { name: "Alice", age: 30 },\n  { name: "Bob", age: 25 },\n];\n\npeople.forEach(p => console.log(greet(p)));\n\n// Generics\nfunction first<T>(arr: T[]): T | undefined {\n  return arr[0];\n}\nconsole.log("First:", first([10, 20, 30]));\n'},
+    hello_html: {name:'demo.html', code:'<!DOCTYPE html>\n<html lang="ja">\n<head>\n  <meta charset="UTF-8">\n  <title>HTML Demo</title>\n  <style>\n    body { font-family: sans-serif; background: #f0f4f8; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }\n    .card { background: white; border-radius: 12px; padding: 32px; box-shadow: 0 4px 20px rgba(0,0,0,.15); text-align: center; max-width: 400px; }\n    h1 { color: #007acc; margin-bottom: 8px; }\n    button { background: #007acc; color: white; border: none; padding: 10px 24px; border-radius: 6px; font-size: 16px; cursor: pointer; margin: 8px; }\n    button:hover { background: #005fa3; }\n    #counter { font-size: 48px; font-weight: bold; color: #333; margin: 16px 0; }\n  </style>\n</head>\n<body>\n  <div class="card">\n    <h1>🌐 HTML Demo</h1>\n    <p>WebIDE のプレビュー機能</p>\n    <div id="counter">0</div>\n    <button onclick="count(-1)">−</button>\n    <button onclick="count(1)">+</button>\n    <button onclick="reset()">リセット</button>\n  </div>\n  <script>\n    let n = 0;\n    function count(d) { n += d; document.getElementById("counter").textContent = n; }\n    function reset() { n = 0; document.getElementById("counter").textContent = n; }\n  <\/script>\n</body>\n</html>\n'},
+    hello_md: {name:'readme.md', code:'# WebIDE 🚀\n\nブラウザで動く **マルチ言語 IDE** です。\n\n## 対応言語\n\n| 言語 | 拡張子 | 実行エンジン |\n|------|--------|----------|\n| Python | `.py` | Pyodide |\n| JavaScript | `.js` | Browser |\n| TypeScript | `.ts` | Babel |\n| JSX | `.jsx` | Babel |\n| TSX | `.tsx` | Babel |\n| HTML | `.html` | Preview |\n| CSS | `.css` | Preview |\n| Markdown | `.md` | Marked |\n| JSON | `.json` | Parser |\n| XML | `.xml` | Parser |\n\n## 使い方\n\n1. ファイルを開く or 作成する\n2. コードを書く\n3. **F5** で実行！\n\n```python\nprint("Hello from Python!")\n```\n\n> プレビュータブで **HTML/CSS/Markdown** の結果を確認できます。\n'},
+    hello_jsx: {name:'app.jsx', code:'// JSX Demo (Babel transpilation)\n// React.createElement calls are generated from JSX\n\nconst Button = ({ onClick, children, color }) => {\n  const style = { background: color || "#007acc", color: "white", border: "none",\n    padding: "8px 16px", borderRadius: "4px", cursor: "pointer", margin: "4px" };\n  return <button style={style} onClick={onClick}>{children}</button>;\n};\n\nconst Counter = () => {\n  let count = 0;\n  return (\n    <div>\n      <h2>Counter Component</h2>\n      <Button onClick={() => console.log("Clicked! count:", ++count)} color="#0d7a3e">\n        Increment\n      </Button>\n      <Button onClick={() => console.log("Reset! count:", (count=0))} color="#a52e2e">\n        Reset\n      </Button>\n    </div>\n  );\n};\n\nconsole.log("✓ JSX transpiled by Babel");\nconsole.log("Button component:", typeof Button);\nconsole.log("Counter component:", typeof Counter);\n'},
+  };
+  const e = exs[type];
+  if (!e) return;
+  const f = FS.createFile(e.name, e.code);
+  IDE.open(f.id);
+  FS.renderTree();
+  notify(e.name + ' を開きました', 'ok');
+}
+
+// ---- File Open ----
+function handleFilePick(ev) {
+  for (const file of ev.target.files) {
+    const r = new FileReader();
+    r.onload = e => {
+      const f = FS.createFile(file.name, e.target.result);
+      IDE.open(f.id); FS.renderTree();
+      notify('開きました: ' + file.name, 'ok');
+    };
+    r.readAsText(file);
+  }
+  ev.target.value = '';
+}
+
+// ---- Folder Open ----
+async function handleFolderPick(ev) {
+  const files = Array.from(ev.target.files);
+  ev.target.value = '';
+  if (!files.length) return;
+
+  const folderMap = new Map(); // path -> folder id
+
+  function getOrCreateFolder(pathParts) {
+    if (!pathParts.length) return null;
+    const key = pathParts.join('/');
+    if (folderMap.has(key)) return folderMap.get(key);
+    const parentId = pathParts.length > 1 ? getOrCreateFolder(pathParts.slice(0,-1)) : null;
+    const folder = FS.createFolder(pathParts[pathParts.length-1], parentId);
+    folderMap.set(key, folder.id);
+    return folder.id;
+  }
+
+  // フォルダ構造を先行構築（ファイルパスから推定）
+  const allDirParts = new Set();
+  for (const file of files) {
+    const parts = file.webkitRelativePath.split('/');
+    for (let i = 1; i < parts.length; i++) {
+      allDirParts.add(parts.slice(0, i).join('/'));
+    }
+  }
+  // 浅い順に作成
+  [...allDirParts]
+    .sort((a, b) => a.split('/').length - b.split('/').length)
+    .forEach(p => getOrCreateFolder(p.split('/')));
+
+  let firstFileId = null;
+  let count = 0;
+
+  // ファイルを逐次読み込み（Promise で直列化）
+  for (const file of files) {
+    const parts = file.webkitRelativePath.split('/');
+    const folderParts = parts.slice(0, -1);
+    const fileName = parts[parts.length - 1];
+    const parentId = folderParts.length ? getOrCreateFolder(folderParts) : null;
+
+    let content = '// Binary file - cannot display';
+    try {
+      content = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = e => res(e.target.result);
+        r.onerror = () => res('// Read error: ' + fileName);
+        r.readAsText(file);
+      });
+    } catch(_) {}
+
+    const f = FS.createFile(fileName, content, parentId);
+    count++;
+    if (!firstFileId) firstFileId = f.id;
+  }
+
+  FS.flush();
+  FS.renderTree();
+  notify(`フォルダ読み込み完了: ${count} ファイル`, 'ok');
+  if (firstFileId) IDE.open(firstFileId);
+}
+
+// ---- ZIP Open ----
+async function handleZipPick(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+  // NOTE: ev.target.value をリセットするのは buf 取得後でないと file が無効化される
+
+  notify('ZIP を展開中... しばらくお待ちください', 'info', 10000);
+  try {
+    const buf = await file.arrayBuffer();
+    ev.target.value = ''; // buf 確保後に安全にリセット
+
+    const zip = await JSZip.loadAsync(buf);
+
+    // ── 正規化・スキップフィルタ ──
+    const normalize = p => p.replace(/^\/+/, '').replace(/\/+$/, '');
+    const SKIP = p => {
+      const n = normalize(p);
+      if (!n) return true;
+      // __MACOSX, .DS_Store, hidden files
+      if (/^__MACOSX(\/|$)/.test(n)) return true;
+      if (/(^|\/)\./.test(n)) return true;            // ドットファイル
+      if (/(^|\/)Thumbs\.db$/.test(n)) return true;
+      if (/(^|\/)desktop\.ini$/.test(n)) return true;
+      return false;
+    };
+    const TEXT_EXT = /\.(py|js|ts|jsx|tsx|html|css|json|md|xml|svg|txt|csv|yml|yaml|toml|ini|sh|bat|c|cpp|h|java|go|rs|rb|php|vue|svelte|graphql|prisma|env|gitignore|npmrc)$/i;
+
+    // ── 全エントリを収集 ──
+    const allEntries = [];
+    zip.forEach((relativePath, entry) => allEntries.push({ relativePath, entry }));
+
+    // ── フォルダマップ（同期・直列で構築） ──
+    const folderMap = new Map(); // 正規化パス -> folder.id
+
+    function getOrCreateFolder(parts) {
+      if (!parts || parts.length === 0) return null;
+      const key = parts.join('/');
+      if (folderMap.has(key)) return folderMap.get(key);
+      const parentId = parts.length > 1 ? getOrCreateFolder(parts.slice(0, -1)) : null;
+      const folder = FS.createFolder(parts[parts.length - 1], parentId);
+      folderMap.set(key, folder.id);
+      return folder.id;
+    }
+
+    // ── Phase 1: フォルダエントリを浅い順に先行作成 ──
+    const dirParts = allEntries
+      .filter(({ relativePath, entry }) => entry.dir && !SKIP(relativePath))
+      .map(({ relativePath }) => normalize(relativePath).split('/').filter(Boolean))
+      .filter(parts => parts.length > 0)
+      .sort((a, b) => a.length - b.length); // 浅い順
+
+    for (const parts of dirParts) getOrCreateFolder(parts);
+
+    // ── Phase 2: ファイルを逐次取得（Promise.all は使わない → 競合回避） ──
+    const fileEntries = allEntries.filter(({ relativePath, entry }) => {
+      if (entry.dir) return false;
+      return !SKIP(relativePath);
+    });
+
+    let fileCount = 0;
+    let firstTextFileId = null;
+
+    for (const { relativePath, entry } of fileEntries) {
+      const norm = normalize(relativePath);
+      const parts = norm.split('/').filter(Boolean);
+      if (parts.length === 0) continue;
+
+      const fileName = parts[parts.length - 1];
+      const folderParts = parts.slice(0, -1);
+      // Phase 1 で作成済みフォルダを参照（未作成なら作成）
+      const parentId = folderParts.length > 0 ? getOrCreateFolder(folderParts) : null;
+
+      let content;
+      try {
+        content = TEXT_EXT.test(fileName)
+          ? await entry.async('string')
+          : '// Binary file: ' + fileName + '\n// (binary content is not displayed)';
+      } catch (readErr) {
+        content = '// Read error: ' + fileName + '\n// ' + (readErr.message || readErr);
+      }
+
+      const f = FS.createFile(fileName, content, parentId);
+      fileCount++;
+      if (!firstTextFileId && TEXT_EXT.test(fileName)) firstTextFileId = f.id;
+    }
+
+    // ── 完了処理 ──
+    FS.flush();      // debounce を待たずに即時保存
+    FS.renderTree();
+    notify(`✓ ZIP 展開完了: ${fileCount} ファイル`, 'ok');
+
+    const openId = firstTextFileId || (FS.allFiles()[0] || {}).id;
+    if (openId) IDE.open(openId);
+
+  } catch(e) {
+    ev.target.value = '';
+    console.error('[ZIP] error:', e);
+    notify('ZIP 展開エラー: ' + (e.message || String(e)), 'err');
+  }
+}
+
+// ---- Menu ----
+function toggleMenu(el) {
+  const was = el.classList.contains('open');
+  closeMenus();
+  if (!was) el.classList.add('open');
+}
+function closeMenus() {
+  document.querySelectorAll('.menu-item.open').forEach(m => m.classList.remove('open'));
+  $('ctx-editor').classList.remove('vis');
+  $('ctx-file').style.display = 'none';
+}
+document.addEventListener('click', closeMenus);
+
+function meExec(cmd) {
+  closeMenus();
+  if (!IDE.state.editor) return;
+  IDE.state.editor.focus();
+  IDE.state.editor.trigger('keyboard', cmd, null);
+}
+
+// ---- Context Menus ----
+document.addEventListener('contextmenu', e => {
+  const me = $('monaco-editor');
+  if (me && me.contains(e.target)) {
+    e.preventDefault();
+    const ctx = $('ctx-editor');
+    ctx.style.left = e.clientX + 'px';
+    ctx.style.top = e.clientY + 'px';
+    ctx.classList.add('vis');
+  }
+});
+function showFileCtx(e, id) {
+  e.preventDefault(); e.stopPropagation();
+  const m = $('ctx-file');
+  const f = FS.get(id);
+  const runnable = f && /\.(py|js|ts|jsx|tsx|html|css|json|md|xml)$/.test(f.name);
+  m.innerHTML = `<div class="ci" onclick="IDE.open('${id}');closeMenus()">開く</div>`
+    + (runnable ? `<div class="ci" onclick="IDE.open('${id}');setTimeout(()=>IDE.runCode(),100);closeMenus()"><i class="fas fa-play" style="color:#4ec9b0;margin-right:6px"></i>実行</div>` : '')
+    + `<div class="cs"></div>`
+    + `<div class="ci" onclick="UI.renameFile(null,'${id}');closeMenus()">名前の変更</div>`
+    + `<div class="ci danger" onclick="UI.delFile(null,'${id}');closeMenus()">削除</div>`;
+  m.style.left = e.clientX+'px'; m.style.top = e.clientY+'px'; m.style.display='block';
+}
+function showFolderCtx(e, id) {
+  e.preventDefault(); e.stopPropagation();
+  const m = $('ctx-file');
+  m.innerHTML = `<div class="ci" onclick="UI.newFileInFolder(null,'${id}');closeMenus()"><i class="fas fa-file-plus" style="margin-right:6px"></i>ファイルを追加</div>`
+    + `<div class="ci" onclick="UI.newFolderInFolder(null,'${id}');closeMenus()"><i class="fas fa-folder-plus" style="margin-right:6px"></i>フォルダを追加</div>`
+    + `<div class="cs"></div>`
+    + `<div class="ci" onclick="UI.renameFolderNode(null,'${id}');closeMenus()">名前の変更</div>`
+    + `<div class="ci danger" onclick="UI.delFolderNode(null,'${id}');closeMenus()">フォルダを削除</div>`;
+  m.style.left = e.clientX+'px'; m.style.top = e.clientY+'px'; m.style.display='block';
+}
+
+// ---- Modal ----
+let modalCb = null;
+function showModal(title, def, cb) {
+  $('modal-h').textContent = title;
+  $('modal-in').value = def;
+  $('modal-bg').classList.add('vis');
+  $('modal-in').focus(); $('modal-in').select();
+  modalCb = cb;
+}
+function closeModal() { $('modal-bg').classList.remove('vis'); modalCb = null; }
+function confirmModal() {
+  const v = $('modal-in').value.trim();
+  // closeModal() clears modalCb, so keep a local reference before closing.
+  const cb = modalCb;
+  closeModal();
+  if (cb) cb(v);
+}
+$('modal-in').addEventListener('keydown', e => { if(e.key==='Enter') confirmModal(); if(e.key==='Escape') closeModal(); });
+
+// ---- Panel / Sidebar Resize ----
+(function() {
+  const h = $('panel-resize'), p = $('panel');
+  let drag=false, sy=0, sh=0;
+  h.addEventListener('mousedown', e => { drag=true; sy=e.clientY; sh=p.offsetHeight; document.body.style.cursor='ns-resize'; document.body.style.userSelect='none'; });
+  document.addEventListener('mousemove', e => { if(!drag) return; const d=sy-e.clientY; p.style.height=Math.max(80,Math.min(600,sh+d))+'px'; if(IDE.state.editor) IDE.state.editor.layout(); });
+  document.addEventListener('mouseup', () => { drag=false; document.body.style.cursor=''; document.body.style.userSelect=''; });
+
+  const sp = $('sb-split'), sb = $('sidebar');
+  let d2=false, sx=0, sw=0;
+  sp.addEventListener('mousedown', e => { d2=true; sx=e.clientX; sw=sb.offsetWidth; sp.classList.add('drag'); document.body.style.cursor='col-resize'; document.body.style.userSelect='none'; });
+  document.addEventListener('mousemove', e => { if(!d2) return; const diff=e.clientX-sx; sb.style.width=Math.max(100,Math.min(480,sw+diff))+'px'; if(IDE.state.editor) IDE.state.editor.layout(); });
+  document.addEventListener('mouseup', () => { d2=false; sp.classList.remove('drag'); document.body.style.cursor=''; document.body.style.userSelect=''; });
+})();
+
+// ---- Keyboard Shortcuts ----
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey||e.metaKey)) {
+    if (e.key==='n' && !e.shiftKey) { e.preventDefault(); UI.newFile(); }
+    else if (e.key==='N') { e.preventDefault(); UI.newFolder(); }
+    else if (e.key==='o' && !e.shiftKey) { e.preventDefault(); UI.openPicker(); }
+    else if (e.key==='O') { e.preventDefault(); UI.openZipPicker(); }
+    else if (e.key==='s' && !e.shiftKey) { e.preventDefault(); IDE.save(); }
+    else if (e.key==='S') { e.preventDefault(); UI.saveAs(); }
+    else if (e.key==='w') { e.preventDefault(); UI.closeTab(); }
+    else if (e.key==='b') { e.preventDefault(); UI.toggleSidebar(); }
+    else if (e.key==='j') { e.preventDefault(); UI.togglePanel(); }
+    else if (e.key==='k') { e.preventDefault(); IDE.clearTerm(); }
+    else if (e.key==='+' || e.key==='=') { e.preventDefault(); IDE.zoomIn(); }
+    else if (e.key==='-') { e.preventDefault(); IDE.zoomOut(); }
+    else if (e.key==='0') { e.preventDefault(); IDE.resetZoom(); }
+  }
+  if (e.key==='F5') { e.preventDefault(); IDE.runCode(); }
+  if (e.key==='F6') { e.preventDefault(); IDE.stopCode(); }
+  if (e.key==='Escape') { closeMenus(); closeModal(); }
+});
+
+// ---- ページ離脱・非表示時に即時保存 ----
+// IndexedDB は非同期のため beforeunload では完全保証できないが、
+// debounce タイマーを強制実行することで「タイマー未発火」による保存漏れは防ぐ。
+// pagehide / visibilitychange は非同期処理が完了する猶予があるため IDB に有効。
+window.addEventListener('beforeunload', () => { FS.flush(); });
+window.addEventListener('pagehide', () => { FS.flush(); });
+window.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') FS.flush();
+});
+
+// ---- Terminal Input ----
+$('term-in').addEventListener('keydown', e => {
+  if (e.key==='Enter') { const c=$('term-in').value; $('term-in').value=''; IDE.repl(c); }
+  if (e.key==='ArrowUp') { const h=IDE.state.hist; if(h.length){IDE.state.hIdx=Math.min(IDE.state.hIdx+1,h.length-1); $('term-in').value=h[IDE.state.hIdx]||'';} }
+  if (e.key==='ArrowDown') { IDE.state.hIdx=Math.max(IDE.state.hIdx-1,-1); $('term-in').value=IDE.state.hIdx>=0?IDE.state.hist[IDE.state.hIdx]:''; }
+});
+
+// ---- Loading ----
+function setLoad(pct, msg) {
+  $('ld-bar').style.width = pct + '%';
+  if (msg) $('ld-msg').textContent = msg;
+}
+
+// ===================================================
+// Monaco Init
+// ===================================================
+async function initMonaco() {
+  return new Promise(resolve => {
+    // Monaco が既にロード済みの場合はスキップ
+    if (window._monacoLoaded) { resolve(window._monacoEditor); return; }
+    require.config({
+      paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' },
+      'vs/nls': { availableLanguages: {} }
+    });
+    require(['vs/editor/editor.main'], () => {
+      window._monacoLoaded = true;
+
+      // --- Python completion ---
+      monaco.languages.registerCompletionItemProvider('python', {
+        triggerCharacters: ['.', ' ', '('],
+        provideCompletionItems(model, pos) {
+          const w = model.getWordUntilPosition(pos);
+          const range = { startLineNumber:pos.lineNumber, endLineNumber:pos.lineNumber, startColumn:w.startColumn, endColumn:w.endColumn };
+          const K = monaco.languages.CompletionItemKind;
+          const kwds = ['False','None','True','and','as','assert','async','await','break','class','continue','def','del','elif','else','except','finally','for','from','global','if','import','in','is','lambda','nonlocal','not','or','pass','raise','return','try','while','with','yield'];
+          const builtins = ['print','input','len','range','list','dict','set','tuple','str','int','float','bool','type','isinstance','hasattr','getattr','setattr','dir','vars','help','enumerate','zip','map','filter','sorted','reversed','sum','min','max','abs','round','any','all','next','iter','id','hex','oct','bin','chr','ord','repr','format','hash','pow','divmod','callable','super','open','object','property','staticmethod','classmethod'];
+          const snippets = [
+            {l:'def',dt:'def function():',it:'def ${1:name}(${2:args}):\n    """${3:docstring}"""\n    ${4:pass}'},
+            {l:'class',dt:'class MyClass:',it:'class ${1:ClassName}:\n    """${2:docstring}"""\n    \n    def __init__(self${3:, args}):\n        ${4:pass}'},
+            {l:'for',dt:'for loop',it:'for ${1:item} in ${2:iterable}:\n    ${3:pass}'},
+            {l:'while',dt:'while loop',it:'while ${1:condition}:\n    ${2:pass}'},
+            {l:'if',dt:'if statement',it:'if ${1:condition}:\n    ${2:pass}'},
+            {l:'try',dt:'try/except',it:'try:\n    ${1:pass}\nexcept ${2:Exception} as ${3:e}:\n    ${4:pass}'},
+            {l:'with',dt:'with statement',it:'with ${1:expr} as ${2:f}:\n    ${3:pass}'},
+            {l:'lambda',dt:'lambda',it:'lambda ${1:args}: ${2:expr}'},
+            {l:'lc',dt:'list comprehension',it:'[${1:expr} for ${2:x} in ${3:iterable}]'},
+            {l:'dc',dt:'dict comprehension',it:'{${1:k}: ${2:v} for ${3:k}, ${4:v} in ${5:iterable}.items()}'},
+            {l:'@dataclass',dt:'dataclass',it:'@dataclass\nclass ${1:Name}:\n    ${2:field}: ${3:type}'},
+            {l:'main',dt:'if __name__',it:'if __name__ == "__main__":\n    ${1:main()}'},
+          ];
+          return { suggestions: [
+            ...kwds.map(k => ({label:k,kind:K.Keyword,insertText:k,range})),
+            ...builtins.map(b => ({label:b,kind:K.Function,insertText:b,range})),
+            ...snippets.map(s => ({label:s.l,detail:s.dt,kind:K.Snippet,insertText:s.it,insertTextRules:monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,range})),
+          ]};
+        }
+      });
+
+      // --- Python hover ---
+      monaco.languages.registerHoverProvider('python', {
+        provideHover(model, pos) {
+          const w = model.getWordAtPosition(pos);
+          if (!w) return null;
+          const docs = {
+            print:{s:'print(*objects, sep=" ", end="\\n")',d:'テキストを出力します。'},
+            len:{s:'len(s) -> int',d:'オブジェクトの長さを返します。'},
+            range:{s:'range(stop) | range(start, stop[, step])',d:'数値シーケンスを返します。'},
+            list:{s:'list([iterable])',d:'リストを作成します。'},
+            dict:{s:'dict(**kwargs)',d:'辞書を作成します。'},
+            str:{s:'str(object)',d:'文字列に変換します。'},
+            int:{s:'int(x)',d:'整数に変換します。'},
+            float:{s:'float(x)',d:'浮動小数点数に変換します。'},
+            enumerate:{s:'enumerate(iterable, start=0)',d:'(index, value) のイテレータを返します。'},
+            zip:{s:'zip(*iterables)',d:'複数イテラブルを束ねます。'},
+            map:{s:'map(fn, iterable)',d:'各要素に関数を適用します。'},
+            filter:{s:'filter(fn, iterable)',d:'条件を満たす要素を返します。'},
+            sorted:{s:'sorted(iterable, *, key, reverse)',d:'ソート済みリストを返します。'},
+            sum:{s:'sum(iterable, start=0)',d:'合計を返します。'},
+            min:{s:'min(iterable)',d:'最小値を返します。'},
+            max:{s:'max(iterable)',d:'最大値を返します。'},
+            abs:{s:'abs(x)',d:'絶対値を返します。'},
+            round:{s:'round(x, ndigits)',d:'数値を丸めます。'},
+            isinstance:{s:'isinstance(obj, class)',d:'インスタンス確認。'},
+          };
+          const info = docs[w.word];
+          if (!info) return null;
+          return {
+            range: new monaco.Range(pos.lineNumber, w.startColumn, pos.lineNumber, w.endColumn),
+            contents: [{value:'```python\n'+info.s+'\n```'},{value:info.d}]
+          };
+        }
+      });
+
+      // Register XML language for monaco
+      if (!monaco.languages.getLanguages().find(l=>l.id==='xml')) {
+        monaco.languages.register({id:'xml'});
+      }
+
+      // --- Custom themes ---
+      monaco.editor.defineTheme('monokai', {
+        base:'vs-dark', inherit:true,
+        rules:[
+          {token:'keyword',foreground:'F92672'},{token:'string',foreground:'E6DB74'},
+          {token:'comment',foreground:'75715E',fontStyle:'italic'},{token:'number',foreground:'AE81FF'},
+          {token:'type',foreground:'66D9EF'},{token:'identifier',foreground:'F8F8F2'},
+        ],
+        colors:{'editor.background':'#272822','editor.foreground':'#F8F8F2','editorLineNumber.foreground':'#75715E','editor.selectionBackground':'#49483E','editor.lineHighlightBackground':'#3E3D32'}
+      });
+      monaco.editor.defineTheme('dracula', {
+        base:'vs-dark', inherit:true,
+        rules:[
+          {token:'keyword',foreground:'FF79C6'},{token:'string',foreground:'F1FA8C'},
+          {token:'comment',foreground:'6272A4',fontStyle:'italic'},{token:'number',foreground:'BD93F9'},
+          {token:'type',foreground:'8BE9FD'},{token:'function',foreground:'50FA7B'},
+        ],
+        colors:{'editor.background':'#282A36','editor.foreground':'#F8F8F2','editorLineNumber.foreground':'#6272A4','editor.selectionBackground':'#44475A','editor.lineHighlightBackground':'#44475A44','editorCursor.foreground':'#F8F8F2'}
+      });
+
+      // --- Create editor instance ---
+      const ed = monaco.editor.create($('monaco-editor'), {
+        value: '',
+        language: 'python',
+        theme: 'vs-dark',
+        fontSize: 13.5,
+        fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+        fontLigatures: true,
+        lineNumbers: 'on',
+        roundedSelection: false,
+        scrollBeyondLastLine: false,
+        minimap: { enabled: true, scale: 1 },
+        automaticLayout: true,
+        tabSize: 2,
+        insertSpaces: true,
+        wordWrap: 'off',
+        renderWhitespace: 'selection',
+        cursorStyle: 'line',
+        cursorBlinking: 'blink',
+        smoothScrolling: true,
+        mouseWheelZoom: true,
+        bracketPairColorization: { enabled: true },
+        guides: { bracketPairs: true, indentation: true },
+        suggestOnTriggerCharacters: true,
+        quickSuggestions: { other: true, comments: false, strings: false },
+        parameterHints: { enabled: true },
+        formatOnPaste: true,
+        autoClosingBrackets: 'always',
+        autoClosingQuotes: 'always',
+        folding: true,
+        foldingStrategy: 'indentation',
+        showFoldingControls: 'mouseover',
+        renderLineHighlight: 'all',
+        occurrencesHighlight: true,
+        codeLens: false,
+        scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+        overviewRulerBorder: false,
+        glyphMargin: true,
+        padding: { top: 8, bottom: 8 },
+      });
+
+      ed.onDidChangeCursorPosition(e => {
+        $('cursor-info').textContent = '行 ' + e.position.lineNumber + ', 列 ' + e.position.column;
+      });
+
+      ed.addAction({ id:'run-code', label:'実行', keybindings:[monaco.KeyCode.F5], run:() => IDE.runCode() });
+      ed.addAction({ id:'save-file', label:'保存', keybindings:[monaco.KeyMod.CtrlCmd|monaco.KeyCode.KeyS], run:() => IDE.save() });
+
+      IDE.initEditor(ed);
+      window._monacoEditor = ed;
+      resolve(ed);
+    });
+  });
+}
+
+// ===================================================
+// Pyodide Init
+// ===================================================
+async function initPyodide() {
+  const py = await loadPyodide({
+    indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/',
+    stdout: t => IDE.tlog(t, 'tl-out'),
+    stderr: t => IDE.tlog(t, 'tl-err'),
+  });
+  IDE.initPy(py);
+  return py;
+}
+
+// ===================================================
+// Boot
+// ===================================================
+(async function boot() {
+  setLoad(10, 'Monaco Editor を読み込み中...');
+  try {
+    await initMonaco();
+    setLoad(40, 'Monaco 初期化完了');
+
+    setLoad(55, 'IndexedDB からファイルを復元中...');
+
+    // ---- IndexedDB から前回の状態を復元 (async) ----
+    // restored = true  → IDB にレコードあり（ファイルが 0 件でも「全削除状態」として復元）
+    // restored = false → IDB にレコードなし（初回起動 or クリア後）
+    const restored = await FS.restore();
+
+    if (restored) {
+      // 復元成功: ファイルツリーを描画
+      FS.renderTree();
+      const firstFile = FS.allFiles()[0];
+      if (firstFile) {
+        IDE.open(firstFile.id);
+      } else {
+        // 全ファイル削除済みの状態 → ウェルカム画面を表示
+        IDE.showWelcome();
+      }
+      notify('前回の作業を復元しました', 'ok');
+    } else {
+      // 初回 or 復元データなし: デフォルトファイルを作成
+      const f1 = FS.createFile('main.py',
+`# WebIDE - Python Example
+# F5 で実行できます
+
+def fibonacci(n: int) -> list:
+    """n 項のフィボナッチ数列を生成"""
+    if n <= 0: return []
+    if n == 1: return [0]
+    fib = [0, 1]
+    for _ in range(2, n):
+        fib.append(fib[-1] + fib[-2])
+    return fib
+
+if __name__ == "__main__":
+    result = fibonacci(12)
+    print("フィボナッチ数列:", result)
+    print("合計:", sum(result))
+`);
+
+      const f2 = FS.createFile('main.js',
+`// JavaScript Example
+// F5 で実行できます
+
+const greet = (name) => \`Hello, \${name}! 🚀\`;
+
+// Array operations
+const numbers = Array.from({length: 10}, (_, i) => i + 1);
+console.log("Numbers:", numbers);
+console.log("Even:", numbers.filter(n => n % 2 === 0));
+console.log("Sum:", numbers.reduce((a, b) => a + b, 0));
+
+console.log(greet("JavaScript"));
+`);
+
+      const f3 = FS.createFile('index.html',
+`<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>HTML Demo</title>
+  <style>
+    body { font-family: sans-serif; background: linear-gradient(135deg, #667eea, #764ba2); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .card { background: white; border-radius: 16px; padding: 40px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,.2); }
+    h1 { color: #667eea; } button { background: #667eea; color: white; border: none; padding: 12px 28px; border-radius: 8px; font-size: 16px; cursor: pointer; }
+    button:hover { background: #764ba2; }
+    #msg { margin-top: 16px; font-size: 18px; color: #333; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🌐 HTML プレビュー</h1>
+    <p>WebIDE のプレビュー機能デモ</p>
+    <button onclick="document.getElementById('msg').textContent = 'Hello! ' + new Date().toLocaleTimeString()">クリックして挨拶</button>
+    <div id="msg"></div>
+  </div>
+</body>
+</html>
+`);
+
+      // サンプルフォルダ構造
+      const srcFolder = FS.createFolder('src', null);
+      FS.createFile('utils.ts',
+`// TypeScript Utilities
+interface Point { x: number; y: number; }
+
+function distance(a: Point, b: Point): number {
+  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+}
+
+const p1: Point = { x: 0, y: 0 };
+const p2: Point = { x: 3, y: 4 };
+
+console.log(\`Distance: \${distance(p1, p2)}\`);
+console.log("TypeScript type checking works!");
+`, srcFolder.id);
+
+      FS.createFile('styles.css',
+`/* CSS Demo */
+:root { --primary: #007acc; --secondary: #4ec9b0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+}
+.card {
+  background: white; border-radius: 12px; padding: 2rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2); animation: fadeIn 0.5s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+`, srcFolder.id);
+
+      IDE.open(f1.id);
+      FS.renderTree();
+    }
+
+    setLoad(65, 'Pyodide (Python 3.11) を読み込み中...');
+
+    // Pyodide はバックグラウンドで初期化
+    initPyodide().then(() => {
+      $('py-dot').classList.remove('loading');
+      $('py-txt').textContent = 'Python 3.11 (Pyodide)';
+      IDE.clearTerm();
+      IDE.tlog('WebIDE へようこそ!', 'tl-sys');
+      IDE.tlog('対応言語: Python・JS・TS・JSX・TSX・HTML・CSS・JSON・Markdown・XML', 'tl-sys');
+      IDE.tlog('編集内容は IndexedDB に自動保存されます。次回起動時に復元されます。', 'tl-sys');
+      notify('Python 3.11 が利用可能です', 'ok');
+    }).catch(() => {
+      $('py-txt').textContent = 'Python エラー';
+      notify('Pyodide の読み込みに失敗しました', 'err');
+    });
+
+    setLoad(90, 'UI を初期化中...');
+    await new Promise(r => setTimeout(r, 200));
+    setLoad(100, '起動完了!');
+    await new Promise(r => setTimeout(r, 300));
+
+    const ov = $('loading');
+    ov.style.opacity = '0'; ov.style.transition = 'opacity 0.4s';
+    setTimeout(() => ov.classList.add('done'), 400);
+
+    IDE.tlog('WebIDE Terminal', 'tl-sys');
+    IDE.tlog('Python / JS / TS / JSX / TSX / HTML / CSS / JSON / Markdown / XML', 'tl-sys');
+    IDE.tlog('F5 で実行 | Ctrl+S で保存 | Ctrl+Shift+O で ZIP を開く', 'tl-sys');
+    IDE.tlog('編集内容は IndexedDB に自動保存されます', 'tl-sys');
+    IDE.tlog('', 'tl-sys');
+
+    setTimeout(() => { if (IDE.state.editor) IDE.state.editor.focus(); }, 500);
+  } catch(e) {
+    $('ld-msg').textContent = 'エラー: ' + e.message;
+    console.error(e);
+  }
+})();
+</script>
+</body>
+</html>
